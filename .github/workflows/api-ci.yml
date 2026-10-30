@@ -185,3 +185,126 @@ jobs:
         run: |
           echo 'Architecture guardrails failed. Functional tests were still executed for complete diagnostics.'
           exit 1
+
+  mysql-isolado:
+    name: MySQL 8 efêmero — migrações e regressões P0
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: cutinapp_ci
+          MYSQL_USER: ci_independence
+          MYSQL_PASSWORD: ci_mysql_ephemeral
+          MYSQL_ROOT_PASSWORD: ci_root_ephemeral
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --host=127.0.0.1 --user=ci_independence --password=ci_mysql_ephemeral"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+
+    env:
+      APP_ENV: testing
+      APP_DEBUG: 'false'
+      APP_KEY: base64:QWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=
+      APP_URL: http://localhost
+      LOG_CHANNEL: stderr
+      DB_CONNECTION: mysql
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_DATABASE: cutinapp_ci
+      DB_USERNAME: ci_independence
+      DB_PASSWORD: ci_mysql_ephemeral
+      CACHE_STORE: array
+      SESSION_DRIVER: array
+      QUEUE_CONNECTION: sync
+      MAIL_MAILER: array
+      JWT_SECRET: ci-only-jwt-secret-ci-only-jwt-secret
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP com PDO MySQL
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, pdo_mysql, gd
+          coverage: none
+
+      - name: Instalar dependências
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Preparar Laravel exclusivamente para MySQL efêmero
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > .env <<'EOF'
+          APP_NAME=PeterTecnetAPI
+          APP_ENV=testing
+          APP_KEY=base64:QWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=
+          APP_DEBUG=false
+          APP_URL=http://localhost
+          LOG_CHANNEL=stderr
+          DB_CONNECTION=mysql
+          DB_HOST=127.0.0.1
+          DB_PORT=3306
+          DB_DATABASE=cutinapp_ci
+          DB_USERNAME=ci_independence
+          DB_PASSWORD=ci_mysql_ephemeral
+          CACHE_STORE=array
+          SESSION_DRIVER=array
+          QUEUE_CONNECTION=sync
+          MAIL_MAILER=array
+          JWT_SECRET=ci-only-jwt-secret-ci-only-jwt-secret
+          EOF
+          php artisan config:clear
+          php artisan route:clear
+
+      - name: Migrar, reverter última migration e reaplicar no MySQL de teste
+        shell: bash
+        run: |
+          set -euo pipefail
+          php artisan migrate --force
+          php artisan migrate:status
+          php artisan migrate:rollback --step=1 --force 2>&1 | tee /tmp/mysql-rollback.log
+          grep -Eq 'Rolling back|Rolled back' /tmp/mysql-rollback.log
+          php artisan migrate --force
+          php artisan migrate:status
+          php artisan platform:audit-migrations
+
+      - name: Comprovar conexão MySQL dentro do PHPUnit e testar regressões financeiras
+        shell: bash
+        run: |
+          set -euo pipefail
+          sed -e 's/name="DB_CONNECTION" value="sqlite"/name="DB_CONNECTION" value="mysql"/' \
+              -e 's/name="DB_DATABASE" value=":memory:"/name="DB_DATABASE" value="cutinapp_ci"/' \
+              phpunit.xml > phpunit.mysql-ci.xml
+          grep -q 'name="DB_CONNECTION" value="mysql"' phpunit.mysql-ci.xml
+          grep -q 'name="DB_DATABASE" value="cutinapp_ci"' phpunit.mysql-ci.xml
+          cat > tests/Feature/CiMysqlDriverGateTest.php <<'PHP'
+          <?php
+
+          namespace Tests\Feature;
+
+          use Illuminate\Support\Facades\DB;
+          use Tests\TestCase;
+
+          final class CiMysqlDriverGateTest extends TestCase
+          {
+              public function test_phpunit_uses_real_ephemeral_mysql_connection(): void
+              {
+                  $this->assertSame('mysql', config('database.default'));
+                  $this->assertSame('mysql', DB::connection()->getDriverName());
+                  $this->assertSame('cutinapp_ci', DB::selectOne('SELECT DATABASE() AS database_name')->database_name);
+              }
+          }
+          PHP
+          php artisan test --configuration=phpunit.mysql-ci.xml \
+            tests/Feature/CiMysqlDriverGateTest.php \
+            tests/Feature/AsaasCommerceWebhookReplayP0Test.php \
+            tests/Feature/CutinappCommerceProductionSafetyTest.php
