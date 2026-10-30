@@ -85,6 +85,7 @@ class CutinappEventLifecycleTest extends TestCase
             ->assertJsonPath('events.data.0.payment_readiness.payout_setup_required', true);
     }
 
+    // Exclusão em lote é contrato canônico app-scoped; não existe alias legado.
     public function test_owner_can_delete_multiple_selected_events_atomically(): void
     {
         $user=$this->user('Produtor Exclusao','bulk-delete-owner@cutinapp.test');
@@ -103,7 +104,7 @@ class CutinappEventLifecycleTest extends TestCase
         $second=$this->withHeaders($headers)->postJson('/api/cutinapp/events',$base+['title'=>'Evento Bulk 2'])->assertCreated()->json('event');
 
         $this->withHeaders($headers)
-            ->deleteJson('/api/cutinapp/events/bulk',['event_ids'=>[$first['id'],$second['id']]])
+            ->deleteJson('/api/v1/apps/cutinapp/events/bulk',['event_ids'=>[$first['id'],$second['id']]])
             ->assertOk()
             ->assertJsonPath('deleted',2)
             ->assertJsonPath('event_ids.0',$first['id'])
@@ -133,7 +134,7 @@ class CutinappEventLifecycleTest extends TestCase
         $foreign=$this->withHeaders($otherHeaders)->postJson('/api/cutinapp/events',$base+['production_id'=>$otherProduction['id'],'title'=>'Evento do Produtor B'])->assertCreated()->json('event');
 
         $this->withHeaders($ownerHeaders)
-            ->deleteJson('/api/cutinapp/events/bulk',['event_ids'=>[$owned['id'],$foreign['id']]])
+            ->deleteJson('/api/v1/apps/cutinapp/events/bulk',['event_ids'=>[$owned['id'],$foreign['id']]])
             ->assertForbidden();
 
         $this->assertDatabaseHas('events',['id'=>$owned['id']]);
@@ -173,7 +174,7 @@ class CutinappEventLifecycleTest extends TestCase
 
         $this->assertCount(105,$ids);
         $this->withHeaders($headers)
-            ->deleteJson('/api/cutinapp/events/bulk',['event_ids'=>$ids])
+            ->deleteJson('/api/v1/apps/cutinapp/events/bulk',['event_ids'=>$ids])
             ->assertOk()
             ->assertJsonPath('deleted',105);
 
