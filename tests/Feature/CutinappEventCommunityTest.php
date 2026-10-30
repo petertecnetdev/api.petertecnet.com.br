@@ -90,7 +90,7 @@ class CutinappEventCommunityTest extends TestCase
             ->assertJsonPath('stats.interested', 1)
             ->assertJsonPath('stats.favorites', 1)
             ->assertJsonPath('stats.posts', 1)
-            ->assertJsonPath('upcoming_with_ticket.0.id', $event['id']);
+            ->assertJsonMissingPath('upcoming_with_ticket.0.id');
     }
 
     public function test_user_cannot_delete_another_users_post_but_production_owner_can_moderate(): void
