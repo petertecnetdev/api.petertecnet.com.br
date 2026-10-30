@@ -365,6 +365,14 @@ final class CommercePaymentSettlementService
                     'updated_at' => now(),
                 ]);
 
+            // A cobrança paga pode ter sido bloqueada por curadoria antes de
+            // qualquer venda. Estorno sem crédito comercial não gera débito.
+            $hadCommercialSale = DB::table('ledger_entries')
+                ->where('app_id', $order->app_id)
+                ->where('payment_id', $lockedPayment->id)
+                ->where('type', 'gross_sale')
+                ->exists();
+
             DB::table('ledger_entries')
                 ->where('app_id', $order->app_id)
                 ->where('payment_id', $lockedPayment->id)
@@ -372,7 +380,7 @@ final class CommercePaymentSettlementService
                 ->where('status', 'posted')
                 ->update(['status' => 'reversed', 'updated_at' => now()]);
 
-            if (! DB::table('ledger_entries')
+            if ($hadCommercialSale && ! DB::table('ledger_entries')
                 ->where('app_id', $order->app_id)
                 ->where('payment_id', $lockedPayment->id)
                 ->where('type', 'reversal')
