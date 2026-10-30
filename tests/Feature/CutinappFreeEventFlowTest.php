@@ -7,11 +7,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
+use Tests\Concerns\UsesAuthorizedLegacyListingFixture;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
 class CutinappFreeEventFlowTest extends TestCase
 {
     use RefreshDatabase;
+    use UsesAuthorizedLegacyListingFixture;
 
     public function test_free_event_can_run_from_production_to_duplicate_checkin_block(): void
     {
@@ -48,6 +50,7 @@ class CutinappFreeEventFlowTest extends TestCase
         ])->assertCreated()->json('ticket.id');
 
         $this->withHeaders($producerHeaders)->postJson("/api/cutinapp/events/{$eventId}/publish")->assertOk();
+        $this->authorizeLegacyListingFixture((int) $eventId, (int) $producer->id);
         $this->getJson("/api/cutinapp/events/public/{$eventSlug}")->assertOk()->assertJsonPath('tickets.0.available', true);
 
         $participant = $this->user('Participante', 'participant@cutinapp.test');
@@ -110,6 +113,10 @@ class CutinappFreeEventFlowTest extends TestCase
         ])->assertCreated()->json('event');
         $ticket = $this->withHeaders($headers)->postJson('/api/cutinapp/courtesies', ['event_id'=>$event['id'],'name'=>'Cortesia','quantity'=>10])->assertCreated()->json('ticket');
         $this->withHeaders($headers)->postJson('/api/cutinapp/events/' . $event['id'] . '/publish')->assertOk();
+        // Header-based requests reset the guard; use the authenticated producer
+        // id from the persisted event's production relationship instead.
+        $creatorId = (int) \App\Models\Event::query()->findOrFail($event['id'])->production->user_id;
+        $this->authorizeLegacyListingFixture((int) $event['id'], $creatorId);
         return ['event_id'=>$event['id'],'ticket_id'=>$ticket['id'],'start_date'=>$event['start_date'],'end_date'=>$event['end_date']];
     }
 
