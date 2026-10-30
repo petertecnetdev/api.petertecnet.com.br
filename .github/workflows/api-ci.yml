@@ -312,7 +312,7 @@ jobs:
               }
           }
           PHP
-          php artisan test --configuration=phpunit.mysql-ci.xml \
+          ./vendor/bin/phpunit --configuration phpunit.mysql-ci.xml \
             tests/Feature/CiMysqlDriverGateTest.php \
             tests/Feature/AsaasCommerceWebhookReplayP0Test.php \
             tests/Feature/CutinappCommerceProductionSafetyTest.php
