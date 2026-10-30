@@ -646,6 +646,32 @@ class AsaasCommerceWebhookReplayP0Test extends TestCase
         $this->assertDatabaseCount('ledger_entries', 0);
     }
 
+    public function test_pedido_apenas_de_item_curatorial_nao_pode_liquidar_venda_tardia(): void
+    {
+        config()->set('services.asaas.api_key', 'chave-falsa-de-teste');
+        \Illuminate\Support\Facades\Mail::fake();
+        [$payment, $order, $item] = $this->persistedPaidCheckoutFixture();
+        $payment->update(['provider_txid' => null]);
+        // O pedido possui somente item operacional, sem passe de ingresso.
+        $item->update(['type' => 'item', 'ticket_id' => null]);
+        DB::table('events')->where('id', $order->event_id)->update([
+            'listing_source' => 'curatorial',
+            'verification_status' => 'unverified',
+            'ownership_status' => 'unclaimed',
+        ]);
+        Http::fake(fn () => Http::response($this->paidAsaasPayload(), 200));
+
+        app(AsaasCommerceWebhookService::class)->process([
+            'id' => 'evt-item-curatorial-pago-tardio-p0',
+            'event' => 'PAYMENT_RECEIVED',
+            'payment' => $this->paidAsaasPayload(),
+        ]);
+        $this->assertDatabaseHas('commerce_payments', ['id' => $payment->id, 'status' => 'paid']);
+        $this->assertDatabaseHas('commerce_orders', ['id' => $order->id, 'status' => 'cancelled']);
+        $this->assertDatabaseCount('event_passes', 0);
+        $this->assertDatabaseCount('ledger_entries', 0);
+    }
+
     public function test_payment_received_pix_get_divergente_nao_liquida_nem_reprocessa_recibo_pendente(): void
     {
         config()->set('services.asaas.api_key', 'chave-falsa-de-teste');
