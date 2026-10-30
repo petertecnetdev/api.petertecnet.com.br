@@ -265,6 +265,14 @@ jobs:
           php artisan config:clear
           php artisan route:clear
 
+      - name: Permitir criação de triggers somente no MySQL descartável
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A migration de compatibilidade cria triggers. Com binlog ativo, MySQL 8
+          # exige esta configuração do servidor; nunca aplicar em banco externo.
+          php -r '$db = new PDO("mysql:host=127.0.0.1;port=3306;dbname=cutinapp_ci", "root", "ci_root_ephemeral", [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]); $db->exec("SET GLOBAL log_bin_trust_function_creators = 1"); if ((int) $db->query("SELECT @@GLOBAL.log_bin_trust_function_creators")->fetchColumn() !== 1) { exit(1); } echo "Trigger DDL habilitado apenas no MySQL efêmero.\\n";'
+
       - name: Migrar, reverter última migration e reaplicar no MySQL de teste
         shell: bash
         run: |
