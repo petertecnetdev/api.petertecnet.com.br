@@ -8,7 +8,7 @@ use Illuminate\Console\Command;
 final class SyncCuratorialTickets extends Command
 {
     protected $signature = 'curation:sync-tickets {--apply : Cadastra fichas informativas sem habilitar vendas}';
-    protected $description = 'Audita ou cadastra ingressos informativos de eventos curatoriais nao reivindicados da Cutinapp.';
+    protected $description = 'Audita ou cadastra ingressos informativos de eventos curatoriais nao reivindicados da aplicacao.';
 
     public function handle(CuratorialTicketSynchronizer $sync): int
     {
