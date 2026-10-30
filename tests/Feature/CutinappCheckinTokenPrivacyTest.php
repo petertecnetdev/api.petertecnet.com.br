@@ -10,11 +10,13 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
+use Tests\Concerns\UsesAuthorizedLegacyListingFixture;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
 class CutinappCheckinTokenPrivacyTest extends TestCase
 {
     use RefreshDatabase;
+    use UsesAuthorizedLegacyListingFixture;
 
     public function test_operational_responses_do_not_expose_qr_token_or_cross_event_pass_data(): void
     {
@@ -31,6 +33,7 @@ class CutinappCheckinTokenPrivacyTest extends TestCase
 
         [$firstEvent] = $this->createPublishedEventWithCourtesy($owner, $production['id'], 'Evento Portaria A');
         [$secondEvent, $secondTicket] = $this->createPublishedEventWithCourtesy($owner, $production['id'], 'Evento Portaria B');
+        $this->authorizeLegacyListingFixture((int) $secondEvent['id'], (int) $owner->id);
 
         $claimedPass = $this->withHeaders($this->headersFor($participant))->postJson('/api/cutinapp/passes/claim/' . $secondTicket['id'])->assertCreated()->json('pass');
         $token = $claimedPass['token'];

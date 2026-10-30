@@ -3,6 +3,7 @@
 namespace App\Domain\Events\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Domain\Platform\Services\ApplicationAdminService;
 use App\Models\Event;
 use App\Models\EventPass;
 use App\Models\User;
@@ -18,6 +19,7 @@ final class EventCommunityController extends Controller
     public function __construct(
         private readonly ApplicationContext $context,
         private readonly AppNotificationService $notifications,
+        private readonly ApplicationAdminService $administrators,
     ) {}
 
     public function publicCommunity(Request $request, string $slug)
@@ -39,10 +41,9 @@ final class EventCommunityController extends Controller
             ->orderBy('p.created_at')->get()->groupBy('parent_id');
         $liked=collect();
         if($user){$all=$ids->merge($replies->flatten(1)->pluck('id'))->filter()->values();if($all->isNotEmpty())$liked=DB::table('event_post_likes')->where('app_id',$appId)->where('user_id',$user->id)->whereIn('post_id',$all)->pluck('post_id');}
-        $eventOwnerId = (int) ($event->created_by_user_id ?: ($event->production?->user_id ?? 0));
-        $isAdmin = $user?->hasProfile('Administrador') ?? false;
-        $canDelete = static fn (object $post) => $user
-            && ((int) $post->user_id === (int) $user->id || $isAdmin || ($eventOwnerId > 0 && $eventOwnerId === (int) $user->id));
+        $event->loadMissing('production');
+        $isAdmin = $user !== null && $this->administrators->hasPermission($user, $appId, 'events.manage');
+        $canDelete = fn (object $post): bool => $this->canModeratePost($user, $post, $isAdmin, $event);
 
         $posts->setCollection(collect($posts->items())->map(function($post)use($replies,$liked,$user,$canDelete){
             $post->is_liked=$user?$liked->contains($post->id):false;
@@ -84,7 +85,12 @@ final class EventCommunityController extends Controller
     public function deletePost(Request $request,int $postId)
     {
         $user=$request->user();$appId=$this->context->id();$post=DB::table('event_posts')->where('app_id',$appId)->where('id',$postId)->first();abort_unless($post,404,'Publicação não encontrada.');
-        $event=$post->event_id?Event::with('production')->where('app_id',$appId)->find($post->event_id):null;$can=(int)$post->user_id===(int)$user->id||$user->hasProfile('Administrador')||($event?->production&&(int)$event->production->user_id===(int)$user->id);abort_unless($can,403,'Você não tem permissão para remover esta publicação.');
+        $event = $post->event_id
+            ? Event::with('production')->where('app_id', $appId)->find($post->event_id)
+            : null;
+        $isAdmin = $this->administrators->hasPermission($user, $appId, 'events.manage');
+        $can = $this->canModeratePost($user, $post, $isAdmin, $event);
+        abort_unless($can, 403, 'Você não tem permissão para remover esta publicação.');
         DB::table('event_posts')->where('app_id',$appId)->where(fn($q)=>$q->where('id',$postId)->orWhere('parent_id',$postId))->update(['status'=>'hidden','updated_at'=>now()]);return response()->json(['message'=>'Publicação removida.']);
     }
 
@@ -99,6 +105,26 @@ final class EventCommunityController extends Controller
     public function unlike(Request $request,int $postId){DB::table('event_post_likes')->where(['app_id'=>$this->context->id(),'post_id'=>$postId,'user_id'=>$request->user()->id])->delete();return response()->json(['message'=>'Curtida removida.','liked'=>false]);}
     public function rate(Request $request,int $eventId){$event=$this->publicEventById($eventId);$data=$request->validate(['rating'=>'required|integer|min:1|max:5']);$verified=EventPass::where('event_id',$event->id)->where('user_id',$request->user()->id)->exists();DB::table('event_ratings')->updateOrInsert(['app_id'=>$this->context->id(),'event_id'=>$event->id,'user_id'=>$request->user()->id],['rating'=>(int)$data['rating'],'verified_attendee'=>$verified,'created_at'=>now(),'updated_at'=>now()]);return response()->json(['message'=>'Sua avaliação foi registrada.','rating'=>(int)$data['rating'],'verified_attendee'=>$verified]);}
     public function report(Request $request,int $eventId){$event=$this->publicEventById($eventId);$data=$request->validate(['reason'=>'required|in:fraud,misleading,inappropriate,safety,cancelled,illegal,hate,harassment,spam,copyright,other','details'=>'nullable|string|max:3000']);DB::table('event_reports')->updateOrInsert(['app_id'=>$this->context->id(),'event_id'=>$event->id,'user_id'=>$request->user()->id],['reason'=>$data['reason'],'details'=>trim((string)($data['details']??''))?:null,'status'=>'open','reviewed_by'=>null,'reviewed_at'=>null,'moderation_note'=>null,'created_at'=>now(),'updated_at'=>now()]);return response()->json(['message'=>'Denúncia enviada para revisão.']);}
+
+    /**
+     * A mesma política alimenta o botão de exclusão e a autorização HTTP.
+     * O criador só modera postagens alheias em encontros sem produção;
+     * permissões administrativas sempre pertencem à aplicação atual.
+     */
+    private function canModeratePost(?User $user, object $post, bool $isAdmin, ?Event $event): bool
+    {
+        if ($user === null) return false;
+        if ((int) $post->user_id === (int) $user->id || $isAdmin) return true;
+        if ($event === null) return false;
+
+        if ($event->isCommunity() && $event->production_id === null) {
+            return (int) $event->created_by_user_id > 0
+                && (int) $event->created_by_user_id === (int) $user->id;
+        }
+
+        return $event->production !== null
+            && (int) $event->production->user_id === (int) $user->id;
+    }
 
     private function notifyCommunityActivity(Event $event,User $actor,int $postId,?object $parent):void
     {

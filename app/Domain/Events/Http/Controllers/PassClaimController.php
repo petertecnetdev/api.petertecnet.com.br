@@ -7,6 +7,7 @@ use App\Models\Event;
 use App\Models\EventPass;
 use App\Models\Ticket;
 use App\Services\AppNotificationService;
+use App\Services\Independence\ListingCommercePolicy;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -17,6 +18,7 @@ final class PassClaimController extends Controller
     public function __construct(
         private readonly ApplicationContext $context,
         private readonly AppNotificationService $notifications,
+        private readonly ListingCommercePolicy $listingCommerce,
     ) {}
 
     public function claim(Request $request, int $ticketId)
@@ -28,7 +30,8 @@ final class PassClaimController extends Controller
             $ticket = Ticket::query()->where('app_id', $this->context->id())->where('event_id', $event->id)->lockForUpdate()->findOrFail($ticketId);
 
             abort_unless($event->production && (int) $event->production->app_id === $this->context->id() && ! $event->is_cancelled && $event->is_published && ! $event->is_private, 422, 'Este evento não está disponível para retirada pública de cortesias.');
-            abort_if($ticket->informational_only, 403, 'Ingresso curatorial informativo: retirada não autorizada.');
+            $this->listingCommerce->assertLegacyOrVerified($event);
+            abort_if($ticket->informational_only, 403, 'Ingresso informativo da curadoria: retirada não autorizada.');
             abort_if($ticket->price === null || (float) $ticket->price > 0, 422, 'Este ingresso não é uma cortesia gratuita.');
             abort_if($ticket->limit_date && now()->greaterThan($ticket->limit_date), 422, 'O prazo para retirada desta cortesia terminou.');
 

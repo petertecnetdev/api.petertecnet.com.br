@@ -545,8 +545,8 @@ class ApplicationOperationsService
             'communications' => 'Comunicação', 'event_analytics' => 'Analytics do evento', 'app_analytics' => 'Analytics da aplicação',
             'rankings' => 'Ranking e inteligência comercial', 'boosts' => 'Destaques e impulsionamento', 'schedule' => 'Agenda e recorrência',
             'map' => 'Mapa operacional', 'audit' => 'Auditoria', 'health' => 'Saúde operacional', 'support' => 'Suporte',
-            'search' => 'Busca global Cutinapp', 'quick_actions' => 'Ações rápidas', 'financial_security' => 'Segurança financeira',
-            'permissions' => 'Permissões administrativas', 'exports' => 'Exportações', 'dashboard' => 'Dashboard Cutinapp',
+            'search' => 'Busca global', 'quick_actions' => 'Ações rápidas', 'financial_security' => 'Segurança financeira',
+            'permissions' => 'Permissões administrativas', 'exports' => 'Exportações', 'dashboard' => 'Painel da aplicação',
         ];
 
         return collect($labels)->map(fn ($label, $key) => [

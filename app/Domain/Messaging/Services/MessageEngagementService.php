@@ -578,7 +578,7 @@ final class MessageEngagementService
             'conversation' => count($cycleIds) === 1 ? $conversations[0]['conversation_id'] : null,
             'engagement' => $token,
         ]));
-        $actionUrl = rtrim((string) ($application->url ?: 'https://cutinapp.petertecnet.com.br'), '/').'/messages'.($query ? '?'.$query : '');
+        $actionUrl = rtrim((string) ($application->url ?: (string) config('app.url')), '/').'/messages'.($query ? '?'.$query : '');
 
         try {
             Mail::to($recipient->email)->send(new MessageEngagementMail(
@@ -838,7 +838,7 @@ final class MessageEngagementService
         $value = trim((string) $value);
         if ($value === '') return null;
         if (filter_var($value, FILTER_VALIDATE_URL)) return $value;
-        return rtrim((string) ($this->context->application()->url ?: 'https://cutinapp.petertecnet.com.br'), '/').'/'.ltrim($value, '/');
+        return rtrim((string) ($this->context->application()->url ?: (string) config('app.url')), '/').'/'.ltrim($value, '/');
     }
 
     private function average(array $values): int

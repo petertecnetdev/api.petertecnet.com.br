@@ -125,7 +125,13 @@ final class SearchQueryParser
         }
 
         if (! $filters['city'] && preg_match('/\bem\s+([\pL][\pL\s\-]{2,50})(?:\s+(?:hoje|amanh[ãa]|sexta|sabado|sábado|domingo|com|ate|até|por)|$)/iu', $raw, $city)) {
-            $candidate = trim($city[1]);
+            // Capture groups are greedy: remove trailing temporal/price modifiers
+            // so "em Goiânia amanhã" resolves to the city, not a fictitious name.
+            $candidate = trim((string) preg_replace(
+                '/\\s+(?:hoje|amanh[ãa]|sexta|sabado|sábado|domingo|com|ate|até|por)\\b.*$/iu',
+                '',
+                trim($city[1])
+            ));
             if ($candidate !== '') {
                 $filters['city'] = $candidate;
             }

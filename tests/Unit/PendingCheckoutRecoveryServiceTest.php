@@ -5,7 +5,7 @@ namespace Tests\Unit;
 use App\Domain\Commerce\Services\PendingCheckoutRecoveryService;
 use App\Models\CommerceOrder;
 use Carbon\Carbon;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 final class PendingCheckoutRecoveryServiceTest extends TestCase
 {

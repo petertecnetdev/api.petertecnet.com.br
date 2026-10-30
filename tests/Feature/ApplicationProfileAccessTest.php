@@ -16,23 +16,24 @@ class ApplicationProfileAccessTest extends TestCase
 
     public function test_permissions_are_union_of_profiles_inside_the_requested_scope(): void
     {
-        $application = Application::query()->create([
+        $application = $this->applicationFixture('cutinapp', [
             'name' => 'Cutinapp',
-            'slug' => 'cutinapp',
             'is_active' => true,
         ]);
 
-        $producer = ApplicationProfile::query()->create([
+        $producer = ApplicationProfile::query()->updateOrCreate([
             'application_id' => $application->id,
             'slug' => 'producer',
+        ], [
             'name' => 'Produtor',
             'permissions' => ['production.create', 'event.create'],
             'is_system' => true,
         ]);
 
-        $artist = ApplicationProfile::query()->create([
+        $artist = ApplicationProfile::query()->updateOrCreate([
             'application_id' => $application->id,
             'slug' => 'artist',
+        ], [
             'name' => 'Artista',
             'permissions' => ['artist.profile.manage', 'artist.events.view'],
             'is_system' => true,
@@ -79,29 +80,29 @@ class ApplicationProfileAccessTest extends TestCase
 
     public function test_revoked_and_other_application_profiles_do_not_leak_permissions(): void
     {
-        $cutinapp = Application::query()->create([
+        $cutinapp = $this->applicationFixture('cutinapp', [
             'name' => 'Cutinapp',
-            'slug' => 'cutinapp',
             'is_active' => true,
         ]);
 
-        $nexus = Application::query()->create([
+        $nexus = $this->applicationFixture('nexus', [
             'name' => 'Nexus',
-            'slug' => 'nexus',
             'is_active' => true,
         ]);
 
-        $cutinappProfile = ApplicationProfile::query()->create([
+        $cutinappProfile = ApplicationProfile::query()->updateOrCreate([
             'application_id' => $cutinapp->id,
             'slug' => 'producer',
+        ], [
             'name' => 'Produtor',
             'permissions' => ['event.create'],
             'is_system' => true,
         ]);
 
-        $nexusProfile = ApplicationProfile::query()->create([
+        $nexusProfile = ApplicationProfile::query()->updateOrCreate([
             'application_id' => $nexus->id,
             'slug' => 'owner',
+        ], [
             'name' => 'Proprietário',
             'permissions' => ['catalog.manage'],
             'is_system' => true,

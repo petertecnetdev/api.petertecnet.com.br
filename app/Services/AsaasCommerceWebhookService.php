@@ -47,6 +47,16 @@ final class AsaasCommerceWebhookService
             throw new RuntimeException('A cobrança retornada pelo Asaas não corresponde ao pagamento local.');
         }
 
+        if ($this->asaas->normalizeLocalStatus($remote) === 'paid') {
+            $order = CommerceOrder::query()
+                ->where('app_id', $payment->app_id)
+                ->find($payment->order_id);
+            if (! $order) {
+                throw new RuntimeException('Pedido local não encontrado na aplicação do pagamento Asaas.');
+            }
+            $remote = $this->verifiedPaidPayload($payment, $order, $remote);
+        }
+
         $this->applyRemoteState($payment, $remote);
 
         return CommerceOrder::query()
@@ -87,6 +97,18 @@ final class AsaasCommerceWebhookService
             return;
         }
 
+        // A notificação é apenas um sinal. Nenhuma liquidação/QR ocorre
+        // antes de consultar a cobrança no provedor e conferir o pedido local.
+        if ($eventType === 'PAYMENT_RECEIVED' || $this->asaas->normalizeLocalStatus($remote) === 'paid') {
+            $order = CommerceOrder::query()
+                ->where('app_id', $payment->app_id)
+                ->find($payment->order_id);
+            if (! $order) {
+                throw new RuntimeException('Pedido local não encontrado na aplicação do pagamento Asaas.');
+            }
+            $remote = $this->verifiedPaidPayload($payment, $order, $remote);
+        }
+
         if ($providerPaymentId !== '' && ! $payment->provider_payment_id) {
             $payment->update(['provider_payment_id' => $providerPaymentId]);
             $payment->refresh();
@@ -94,6 +116,132 @@ final class AsaasCommerceWebhookService
 
         $this->applyRemoteState($payment, $remote, $eventType);
         $this->finishReceipt($eventId);
+    }
+
+    /**
+     * A confirmação financeira exige duas evidências independentes: o webhook
+     * recebido e um GET autenticado da cobrança no Asaas. Ambos precisam
+     * apontar para o mesmo pagamento, pedido, aplicação, método e valor.
+     * Uma resposta parcial deixa o recibo pendente para reconciliação manual.
+     */
+    private function verifiedPaidPayload(CommercePayment $payment, CommerceOrder $order, array $notification): array
+    {
+        $this->assertPaidPaymentIdentity($payment, $order, $notification);
+        $remote = $this->asaas->getPayment(trim($notification['id']));
+        $this->assertPaidPaymentIdentity($payment, $order, $remote);
+
+        return $remote;
+    }
+
+    private function assertPaidPaymentIdentity(CommercePayment $payment, CommerceOrder $order, array $data): void
+    {
+        $paymentId = $data['id'] ?? null;
+        $reference = $data['externalReference'] ?? null;
+        $billingType = $data['billingType'] ?? null;
+        $method = match (strtolower(trim((string) $payment->method))) {
+            'pix' => 'PIX',
+            'card', 'credit_card' => 'CREDIT_CARD',
+            'boleto' => 'BOLETO',
+            default => null,
+        };
+        $orderMethod = match (strtolower(trim((string) $order->payment_method))) {
+            'pix' => 'PIX',
+            'card', 'credit_card' => 'CREDIT_CARD',
+            'boleto' => 'BOLETO',
+            default => null,
+        };
+
+        if ($payment->provider !== 'asaas'
+            || (int) $payment->app_id <= 0 || (int) $payment->order_id <= 0
+            || (int) $order->id !== (int) $payment->order_id
+            || (int) $order->app_id !== (int) $payment->app_id
+            || ! is_string($paymentId) || trim($paymentId) === ''
+            || ($payment->provider_payment_id && trim($paymentId) !== (string) $payment->provider_payment_id)
+            || ! is_string($reference) || $reference === ''
+            || $reference !== (string) $order->public_id
+            || ! is_string($billingType) || ! $method || ! $orderMethod
+            || strtoupper(trim($billingType)) !== $method || $orderMethod !== $method
+            || strtoupper(trim((string) $order->currency)) !== 'BRL'
+            || $this->asaas->normalizeLocalStatus($data) !== 'paid') {
+            throw new RuntimeException('Identidade financeira Asaas ou vínculo com pedido/aplicação não comprovado.');
+        }
+
+        $remoteCents = $this->positiveCents($data['value'] ?? null);
+        $paymentCents = $this->positiveCents($payment->amount);
+        $orderCents = $this->positiveCents($order->total);
+        if ($remoteCents === null || $paymentCents === null || $orderCents === null
+            || $remoteCents !== $paymentCents || $remoteCents !== $orderCents) {
+            throw new RuntimeException('Valor da cobrança Asaas ausente, inválido ou divergente do pedido.');
+        }
+    }
+
+    private function positiveCents(mixed $value): ?int
+    {
+        if (! is_numeric($value) || ! is_finite((float) $value)
+            || (float) $value <= 0 || (float) $value > 100000000) {
+            return null;
+        }
+
+        return (int) round((float) $value * 100);
+    }
+
+    /**
+     * CHECKOUT_PAID é apenas um aviso. A liquidação exige vínculo local
+     * explícito checkout -> pagamento -> pedido/app e GET da cobrança paga.
+     * Cobranças Asaas normais sem provider_txid continuam pelo PAYMENT_*;
+     * nunca associar um checkout pelo último pagamento ou só pela referência.
+     */
+    private function verifiedPaidCheckoutPayload(
+        CommercePayment $payment,
+        CommerceOrder $order,
+        array $checkout,
+    ): array {
+        $checkoutId = $checkout['id'] ?? null;
+        $reference = $checkout['externalReference'] ?? null;
+        $status = $checkout['status'] ?? null;
+        $paymentId = $payment->provider_payment_id;
+        $items = $checkout['items'] ?? null;
+
+        if ($payment->provider !== 'asaas'
+            || (int) $payment->app_id <= 0 || (int) $payment->order_id <= 0
+            || (int) $order->app_id !== (int) $payment->app_id
+            || (int) $order->id !== (int) $payment->order_id
+            || ! is_string($checkoutId) || trim($checkoutId) === ''
+            || ! is_string($payment->provider_txid) || trim($payment->provider_txid) === ''
+            || trim($checkoutId) !== trim($payment->provider_txid)
+            || ! is_string($paymentId) || trim($paymentId) === ''
+            || ! is_string($reference) || trim($reference) === ''
+            || trim($reference) !== (string) $order->public_id
+            || ! is_string($status) || strtoupper(trim($status)) !== 'PAID'
+            || ! is_array($items) || $items === []) {
+            throw new RuntimeException('Checkout Asaas sem identidade comercial comprovada.');
+        }
+
+        $checkoutCents = 0;
+        foreach ($items as $item) {
+            $quantity = is_array($item) ? ($item['quantity'] ?? null) : null;
+            $unitCents = is_array($item) ? $this->positiveCents($item['value'] ?? null) : null;
+            if (! is_int($quantity) || $quantity <= 0 || $unitCents === null) {
+                throw new RuntimeException('Itens do checkout Asaas incompletos ou inválidos.');
+            }
+
+            $checkoutCents += $unitCents * $quantity;
+            if ($checkoutCents > 10000000000) {
+                throw new RuntimeException('Valor do checkout Asaas fora do limite.');
+            }
+        }
+
+        $orderCents = $this->positiveCents($order->total);
+        $paymentCents = $this->positiveCents($payment->amount);
+        if ($orderCents === null || $paymentCents === null
+            || $checkoutCents !== $orderCents || $checkoutCents !== $paymentCents) {
+            throw new RuntimeException('Valor do checkout Asaas divergente do pedido.');
+        }
+
+        $remote = $this->asaas->getPayment(trim($paymentId));
+        $this->assertPaidPaymentIdentity($payment, $order, $remote);
+
+        return $remote;
     }
 
     private function processCheckoutEvent(string $eventId, string $eventType, array $payload): void
@@ -121,15 +269,16 @@ final class AsaasCommerceWebhookService
             return;
         }
 
+        // Não consultar sem ID, nem usar fallback por referência ou último
+        // pagamento: um checkout sem vínculo não pode alterar outro pedido.
+        if ($checkoutId === '') {
+            throw new RuntimeException('Identificador do checkout Asaas ausente.');
+        }
+
         $payment = CommercePayment::query()
             ->where('provider', 'asaas')
-            ->when($checkoutId !== '', fn ($query) => $query->where('provider_txid', $checkoutId))
-            ->latest('id')
+            ->where('provider_txid', $checkoutId)
             ->first();
-
-        if (! $payment && $externalReference !== '') {
-            $payment = $this->findPayment('', $externalReference);
-        }
 
         if (! $payment) {
             $this->finishReceipt($eventId);
@@ -137,12 +286,17 @@ final class AsaasCommerceWebhookService
         }
 
         if ($eventType === 'CHECKOUT_PAID') {
-            $this->settlement->confirm($payment, [
-                'id' => $checkoutId,
-                'value' => round($value, 2),
-                'externalReference' => $externalReference,
-                'status' => $checkout['status'] ?? 'PAID',
-            ]);
+            $order = CommerceOrder::query()
+                ->where('app_id', $payment->app_id)
+                ->find($payment->order_id);
+            if (! $order) {
+                throw new RuntimeException('Pedido do checkout Asaas não encontrado na aplicação.');
+            }
+
+            // Somente a cobrança paga confirmada no GET remoto pode liquidar.
+            // Falha/timeout mantém recibo pendente, sem ledger ou EventPass.
+            $remote = $this->verifiedPaidCheckoutPayload($payment, $order, $checkout);
+            $this->applyRemoteState($payment, $remote, $eventType);
         } elseif (in_array($eventType, ['CHECKOUT_CANCELED', 'CHECKOUT_EXPIRED'], true)) {
             $this->settlement->markFailed(
                 $payment,
@@ -244,21 +398,19 @@ final class AsaasCommerceWebhookService
 
     private function startReceipt(string $eventId, string $eventType, array $safePayload): bool
     {
-        DB::table('financial_webhook_events')->insertOrIgnore([
+        // A chave única (provider, event_id) é a reserva atômica. A leitura
+        // posterior de processed_at NÃO reserva a linha: dois callbacks podem
+        // observar NULL simultaneamente e ambos liquidar o mesmo pagamento.
+        // Um recibo pendente de tentativa anterior permanece bloqueado para
+        // reconciliação explícita; não reexecutar efeitos financeiros no escuro.
+        return DB::table('financial_webhook_events')->insertOrIgnore([
             'provider' => 'asaas',
             'event_id' => $eventId,
             'event_type' => $eventType,
             'payload' => json_encode($safePayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             'created_at' => now(),
             'updated_at' => now(),
-        ]);
-
-        $receipt = DB::table('financial_webhook_events')
-            ->where('provider', 'asaas')
-            ->where('event_id', $eventId)
-            ->first();
-
-        return (bool) ($receipt && ! $receipt->processed_at);
+        ]) === 1;
     }
 
     private function finishReceipt(string $eventId): void

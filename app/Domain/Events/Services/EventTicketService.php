@@ -4,6 +4,10 @@ namespace App\Domain\Events\Services;
 
 use App\Models\Event;
 use App\Models\Ticket;
+use App\Domain\Platform\Services\ApplicationAdminService;
+use App\Services\Independence\ScopedEntityGrant;
+use App\Services\Independence\ListingCommercePolicy;
+use Illuminate\Support\Facades\Log;
 use App\Services\EventAudienceService;
 use App\Support\ApplicationContext;
 use Illuminate\Support\Facades\DB;
@@ -149,6 +153,19 @@ final class EventTicketService
         return DB::transaction(function () use ($user, $ticketId, $data) {
             $ticket = $this->ownedTicket($user, $ticketId, true);
             $issued = $ticket->passes()->count();
+            $activate = (bool) ($data['activate_curatorial_ticket'] ?? false);
+            unset($data['activate_curatorial_ticket']);
+
+            if ($activate) {
+                abort_unless((bool) $ticket->curatorial_information_only, 409,
+                    'Este ingresso não está classificado como informativo.');
+                // A aprovação da reivindicação NÃO autoriza venda; somente
+                // comércio verificado para a produção E para o evento libera.
+                app(ListingCommercePolicy::class)->assertCanSell($ticket->event->load('production'));
+                abort_unless((int) ($data['quantity'] ?? $ticket->quantity) >= 1, 422,
+                    'Informe a quantidade comercial antes de ativar as vendas.');
+                $data['curatorial_information_only'] = false;
+            }
 
             if (isset($data['quantity'])) {
                 abort_if((int) $data['quantity'] < $issued, 422, "A quantidade não pode ser menor que os {$issued} ingressos já emitidos.");
@@ -175,6 +192,17 @@ final class EventTicketService
             }
 
             $ticket->update($data);
+
+            if ($activate) {
+                DB::afterCommit(function () use ($ticket, $user): void {
+                    Log::notice('Ingresso curatorial ativado após autorização comercial', [
+                        'app_id' => (int) $ticket->app_id,
+                        'event_id' => (int) $ticket->event_id,
+                        'ticket_id' => (int) $ticket->id,
+                        'actor_user_id' => (int) $user->id,
+                    ]);
+                });
+            }
 
             return $ticket->fresh()->loadCount('passes');
         }, 3);
@@ -264,15 +292,26 @@ final class EventTicketService
             ->where('app_id', $this->context->id())
             ->with('production')
             ->findOrFail($id);
-        $admin = $user && method_exists($user, 'hasProfile') && $user->hasProfile('Administrador');
+        $appId = $this->context->id();
 
         abort_unless(
-            $event->production && (int) $event->production->app_id === $this->context->id(),
+            $event->production && (int) $event->production->app_id === $appId,
             404,
             'Evento não encontrado neste contexto.'
         );
+
+        $admin = $user && app(ApplicationAdminService::class)
+            ->hasPermission($user, $appId, 'tickets.manage');
+        $legacyProducer = $user
+            && $event->ownership_status === null
+            && $event->production->ownership_status === null
+            && (int) $event->production->user_id === (int) $user->id;
+        $verifiedClaim = $user
+            && $event->ownership_status === 'verified'
+            && app(ScopedEntityGrant::class)->canManage($appId, 'event', (int) $event->id, (int) $user->id);
+
         abort_unless(
-            $user && ($admin || (int) $event->production->user_id === (int) $user->id),
+            $user && ($admin || $legacyProducer || $verifiedClaim),
             403,
             'Você não pode gerenciar ingressos deste evento.'
         );

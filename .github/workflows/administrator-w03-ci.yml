@@ -1,0 +1,213 @@
+name: Administrator API — PHPUnit W03
+
+on:
+  push:
+    branches: [Independence]
+    paths:
+      - '.github/workflows/administrator-w03-ci.yml'
+      - 'tests/ci/*w03_junit*.py'
+      - 'tests/Feature/ApplicationAdmin*Test.php'
+      - 'app/Domain/Platform/Services/ApplicationAdmin*.php'
+      - 'app/Domain/Platform/Services/ApplicationOwnerAuthorityService.php'
+      # Alterações no contrato RBAC também exigem a regressão W03.
+      - 'app/Domain/Platform/Services/ApplicationOperationalAccess.php'
+      - 'app/Domain/Platform/Services/ApplicationProfileManagementService.php'
+      - 'app/Domain/Platform/ApplicationScope.php'
+      - 'app/Domain/Platform/Http/Controllers/ApplicationAdmin*.php'
+      - 'app/Domain/Events/Http/Controllers/ApplicationAdmin*.php'
+      - 'app/Models/ApplicationAdmin*.php'
+      - 'app/Models/ApplicationOwner.php'
+      - 'app/Models/User.php'
+      - 'app/Http/Middleware/EnsureTokenVersion.php'
+      - 'app/Http/Middleware/BindApplicationContext.php'
+      - 'app/Http/Middleware/ResolveApplicationContext.php'
+      - 'database/migrations/*application_admin*.php'
+      - 'database/migrations/*application_owners*.php'
+      - 'database/migrations/*application_profiles*.php'
+      - 'database/migrations/*application_user*.php'
+      - 'app/Http/Middleware/EnsureApplicationAdmin.php'
+      - 'app/Providers/RouteServiceProvider.php'
+      - 'bootstrap/app.php'
+      - 'routes/application_admin.php'
+      - 'routes/api_v1.php'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/administrator-w03-ci.yml'
+      - 'tests/ci/*w03_junit*.py'
+      - 'tests/Feature/ApplicationAdmin*Test.php'
+      - 'app/Domain/Platform/Services/ApplicationAdmin*.php'
+      - 'app/Domain/Platform/Services/ApplicationOwnerAuthorityService.php'
+      # Alterações no contrato RBAC também exigem a regressão W03.
+      - 'app/Domain/Platform/Services/ApplicationOperationalAccess.php'
+      - 'app/Domain/Platform/Services/ApplicationProfileManagementService.php'
+      - 'app/Domain/Platform/ApplicationScope.php'
+      - 'app/Domain/Platform/Http/Controllers/ApplicationAdmin*.php'
+      - 'app/Domain/Events/Http/Controllers/ApplicationAdmin*.php'
+      - 'app/Models/ApplicationAdmin*.php'
+      - 'app/Models/ApplicationOwner.php'
+      - 'app/Models/User.php'
+      - 'app/Http/Middleware/EnsureTokenVersion.php'
+      - 'app/Http/Middleware/BindApplicationContext.php'
+      - 'app/Http/Middleware/ResolveApplicationContext.php'
+      - 'database/migrations/*application_admin*.php'
+      - 'database/migrations/*application_owners*.php'
+      - 'database/migrations/*application_profiles*.php'
+      - 'database/migrations/*application_user*.php'
+      - 'app/Http/Middleware/EnsureApplicationAdmin.php'
+      - 'app/Providers/RouteServiceProvider.php'
+      - 'bootstrap/app.php'
+      - 'routes/application_admin.php'
+      - 'routes/api_v1.php'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regressao-w03:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout do SHA real
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Preparar PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, pdo_sqlite, gd
+          coverage: none
+
+      - name: Validar pré-requisitos e sintaxe
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/w03-ci
+          git rev-parse HEAD | tee /tmp/w03-ci/sha.txt
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+          test -f artisan
+          test -f composer.json
+          if [[ ! -f tests/Feature/ApplicationAdminTenantBoundaryW03Test.php ]]; then
+            echo '::error::Teste W03 ausente na branch; não declarar CI verde.'
+            exit 1
+          fi
+          php -l tests/Feature/ApplicationAdminTenantBoundaryW03Test.php
+          composer validate --no-check-publish --no-check-lock
+
+      - name: Autotestes de integridade JUnit W03
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tests/ci/w03_junit_gate.py tests/ci/test_w03_junit_gate.py
+          python3 -m unittest discover -s tests/ci -p 'test_w03_junit_gate.py' -v
+
+      - name: Instalar dependências
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Preparar SQLite isolado
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > .env <<'EOF'
+          APP_NAME=PeterTecnetAPI
+          APP_ENV=testing
+          APP_KEY=base64:QWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=
+          APP_DEBUG=false
+          APP_URL=http://localhost
+          LOG_CHANNEL=stderr
+          DB_CONNECTION=sqlite
+          DB_DATABASE=/tmp/administrator-w03.sqlite
+          CACHE_STORE=array
+          SESSION_DRIVER=array
+          QUEUE_CONNECTION=sync
+          MAIL_MAILER=array
+          JWT_SECRET=ci-only-jwt-secret-ci-only-jwt-secret
+          EOF
+          touch /tmp/administrator-w03.sqlite
+          php artisan config:clear
+          php artisan route:clear
+          php artisan migrate --force
+
+      - name: Testar vínculo de proprietário por aplicação (suíte isolada)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Este teste deve passar independentemente da regressão P0 de
+          # ApplicationAdminService::context(); não altera o gate W03 existente.
+          php -l tests/Feature/ApplicationAdminJwtTemporalClaimsW03Test.php
+          php -l tests/Feature/ApplicationAdminJwtIssuedAtW03Test.php
+          php artisan test tests/Feature/ApplicationAdminOwnerAuthorityW03Test.php tests/Feature/ApplicationAdminJwtTemporalClaimsW03Test.php tests/Feature/ApplicationAdminJwtIssuedAtW03Test.php 2>&1 | tee /tmp/w03-ci/owner-authority-w03.log
+
+      - name: Auditar registro de rotas administrativas
+        id: rotas
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          php artisan route:list --json --path=api/v1/apps > /tmp/w03-ci/rotas.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          rotas = json.loads(Path('/tmp/w03-ci/rotas.json').read_text())
+          obrigatorias = {
+              ('GET', 'api/v1/apps/{application}/admin/context'),
+              ('GET', 'api/v1/apps/{application}/admin/audit'),
+              ('GET', 'api/v1/apps/{application}/admin/profiles'),
+              ('POST', 'api/v1/apps/{application}/admin/profiles'),
+              ('POST', 'api/v1/apps/{application}/admin/assignments'),
+          }
+          existentes = {
+              (metodo, rota.get('uri', ''))
+              for rota in rotas
+              for metodo in rota.get('method', '').split('|')
+          }
+          faltantes = sorted(obrigatorias - existentes)
+          for metodo, uri in faltantes:
+              print(f'::error::Rota administrativa não registrada: {metodo} {uri}')
+          if faltantes:
+              raise SystemExit(1)
+          print(f'Rotas administrativas confirmadas: {len(obrigatorias)}')
+          PY
+
+      - name: Executar PHPUnit oficial W03
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          php artisan test tests/Feature/ApplicationAdminTenantBoundaryW03Test.php             --log-junit=/tmp/w03-ci/phpunit-w03.xml 2>&1 | tee /tmp/w03-ci/phpunit-w03.log
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > /tmp/w03-ci/phpunit-exit-code.txt
+          # Executar o gate mesmo quando o PHPUnit falhar: guardar diagnóstico
+          # independente de integridade JUnit sem ocultar o exit code oficial.
+          set +e
+          python3 tests/ci/w03_junit_gate.py /tmp/w03-ci/phpunit-w03.xml 2>&1 | tee /tmp/w03-ci/junit-gate.log
+          gate_status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$gate_status" > /tmp/w03-ci/junit-gate-exit-code.txt
+          if (( status != 0 )); then
+            echo "::error::PHPUnit W03 falhou: exit $status (gate JUnit: $gate_status)"
+            exit "$status"
+          fi
+          if (( gate_status != 0 )); then
+            echo "::error::Integridade JUnit W03 falhou: exit $gate_status"
+            exit "$gate_status"
+          fi
+
+      - name: Exigir gate de rotas após executar PHPUnit
+        if: always() && steps.rotas.outcome == 'failure'
+        run: |
+          echo '::error::Registro das rotas administrativas não aprovado.'
+          exit 1
+
+      - name: Publicar evidências por SHA
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: w03-phpunit-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/w03-ci/
+          if-no-files-found: warn
+          retention-days: 14

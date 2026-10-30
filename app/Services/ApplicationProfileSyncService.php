@@ -26,7 +26,7 @@ class ApplicationProfileSyncService
         $this->revokeSystemAssignments();
         $this->syncApplicationMemberships();
         $this->syncOwnedResources();
-        $this->syncCutinappFlags();
+        $this->syncLegacyEventRoles();
         $this->syncArtists();
         $this->syncEmployments();
         $this->syncLegacyAdministrator();
@@ -52,7 +52,7 @@ class ApplicationProfileSyncService
         $this->revokeSystemAssignments($userId);
         $this->syncApplicationMemberships($userId);
         $this->syncOwnedResources($userId);
-        $this->syncCutinappFlags($userId);
+        $this->syncLegacyEventRoles($userId);
         $this->syncArtists($userId);
         $this->syncEmployments($userId);
         $this->syncLegacyAdministrator($userId);
@@ -176,77 +176,7 @@ class ApplicationProfileSyncService
             return;
         }
 
-        $maps = [
-            'cutinapp' => [
-                'producer' => 'producer',
-                'promoter' => 'promoter',
-                'artist' => 'artist',
-                'production_manager' => 'production_manager',
-                'ticket_manager' => 'checkin_operator',
-                'checkin_operator' => 'checkin_operator',
-            ],
-            'rasoio' => [
-                'owner' => 'owner',
-                'manager' => 'manager',
-                'professional' => 'professional',
-                'barber' => 'professional',
-                'reception' => 'reception',
-                'receptionist' => 'reception',
-            ],
-            'nexus' => [
-                'owner' => 'owner',
-                'manager' => 'manager',
-                'operator' => 'operator',
-                'attendant' => 'operator',
-                'stock' => 'stock',
-                'cashier' => 'cashier',
-            ],
-            'plat' => [
-                'owner' => 'owner',
-                'manager' => 'manager',
-                'cashier' => 'cashier',
-                'attendant' => 'attendant',
-                'kitchen' => 'kitchen',
-                'stock' => 'stock',
-            ],
-            'payflow' => [
-                'owner' => 'owner',
-                'manager' => 'sales_manager',
-                'sales_manager' => 'sales_manager',
-                'sales' => 'sales',
-                'seller' => 'sales',
-                'finance' => 'finance',
-                'operations' => 'operations',
-                'support' => 'operations',
-            ],
-            'locaio' => [
-                'owner' => 'owner',
-                'manager' => 'manager',
-                'professional' => 'professional',
-                'provider' => 'professional',
-                'reception' => 'reception',
-                'receptionist' => 'reception',
-            ],
-            'laora' => [
-                'owner' => 'owner',
-                'manager' => 'manager',
-                'collaborator' => 'collaborator',
-            ],
-            'prevora' => [
-                'validator' => 'validator',
-                'moderator' => 'moderator',
-                'curator' => 'curator',
-            ],
-            'peter-tecnet' => [
-                'super_admin' => 'super_admin',
-                'users_admin' => 'users_admin',
-                'establishments_admin' => 'establishments_admin',
-                'moderator' => 'moderator',
-                'finance' => 'finance',
-                'support' => 'support',
-                'auditor' => 'auditor',
-            ],
-        ];
+        $maps = (array) config('application_profiles.legacy_membership_map', []);
 
         $rows = DB::table('application_user as au')
             ->join('applications as a', 'a.id', '=', 'au.application_id')
@@ -276,14 +206,7 @@ class ApplicationProfileSyncService
             return;
         }
 
-        $ownerProfileByApp = [
-            'rasoio' => 'owner',
-            'nexus' => 'owner',
-            'plat' => 'owner',
-            'payflow' => 'owner',
-            'locaio' => 'owner',
-            'laora' => 'owner',
-        ];
+        $ownerProfileByApp = (array) config('application_profiles.resource_owner_map', []);
 
         $rows = DB::table('establishments as e')
             ->join('applications as a', 'a.id', '=', 'e.app_id')
@@ -295,8 +218,8 @@ class ApplicationProfileSyncService
         foreach ($rows as $row) {
             $appSlug = (string) $row->app_slug;
 
-            if ($appSlug === 'cutinapp' && strtolower((string) $row->category) === 'production') {
-                $this->assign('cutinapp', (int) $row->user_id, 'producer', 'application', 0, 'resource_owner', [
+            if ($appSlug === (string) config('application_profiles.event_application_slug', '') && strtolower((string) $row->category) === 'production') {
+                $this->assign($appSlug, (int) $row->user_id, 'producer', 'application', 0, 'resource_owner', [
                     'establishment_id' => (int) $row->id,
                     'resource_type' => 'production',
                 ]);
@@ -310,7 +233,7 @@ class ApplicationProfileSyncService
         }
     }
 
-    private function syncCutinappFlags(?int $userId = null): void
+    private function syncLegacyEventRoles(?int $userId = null): void
     {
         if (! Schema::hasTable('users')) {
             return;
@@ -324,7 +247,7 @@ class ApplicationProfileSyncService
                 ->where('is_producer', true)
                 ->when($userId, fn ($query) => $query->where('id', $userId))
                 ->pluck('id')
-                ->each(fn ($id) => $this->assign('cutinapp', (int) $id, 'producer', 'application', 0, 'legacy_user_flag'));
+                ->each(fn ($id) => $this->assign((string) config('application_profiles.event_application_slug', ''), (int) $id, 'producer', 'application', 0, 'legacy_user_flag'));
         }
 
         if ($hasPromoter) {
@@ -332,7 +255,7 @@ class ApplicationProfileSyncService
                 ->where('is_promoter', true)
                 ->when($userId, fn ($query) => $query->where('id', $userId))
                 ->pluck('id')
-                ->each(fn ($id) => $this->assign('cutinapp', (int) $id, 'promoter', 'application', 0, 'legacy_user_flag'));
+                ->each(fn ($id) => $this->assign((string) config('application_profiles.event_application_slug', ''), (int) $id, 'promoter', 'application', 0, 'legacy_user_flag'));
         }
     }
 
@@ -345,13 +268,13 @@ class ApplicationProfileSyncService
         $rows = DB::table('artists as ar')
             ->join('applications as a', 'a.id', '=', 'ar.app_id')
             ->whereNotNull('ar.user_id')
-            ->where('a.slug', 'cutinapp')
+            ->where('a.slug', (string) config('application_profiles.event_application_slug', ''))
             ->when($userId, fn ($query) => $query->where('ar.user_id', $userId))
             ->select('ar.id', 'ar.user_id')
             ->get();
 
         foreach ($rows as $row) {
-            $this->assign('cutinapp', (int) $row->user_id, 'artist', 'artist', (int) $row->id, 'artist_ownership');
+            $this->assign((string) config('application_profiles.event_application_slug', ''), (int) $row->user_id, 'artist', 'artist', (int) $row->id, 'artist_ownership');
         }
     }
 
@@ -361,51 +284,7 @@ class ApplicationProfileSyncService
             return;
         }
 
-        $maps = [
-            'rasoio' => [
-                'manager' => 'manager',
-                'professional' => 'professional',
-                'barber' => 'professional',
-                'collaborator' => 'professional',
-                'reception' => 'reception',
-                'receptionist' => 'reception',
-            ],
-            'nexus' => [
-                'manager' => 'manager',
-                'operator' => 'operator',
-                'attendant' => 'operator',
-                'stock' => 'stock',
-                'cashier' => 'cashier',
-            ],
-            'plat' => [
-                'manager' => 'manager',
-                'cashier' => 'cashier',
-                'attendant' => 'attendant',
-                'kitchen' => 'kitchen',
-                'stock' => 'stock',
-            ],
-            'payflow' => [
-                'manager' => 'sales_manager',
-                'sales_manager' => 'sales_manager',
-                'sales' => 'sales',
-                'seller' => 'sales',
-                'finance' => 'finance',
-                'operations' => 'operations',
-                'support' => 'operations',
-            ],
-            'locaio' => [
-                'manager' => 'manager',
-                'professional' => 'professional',
-                'provider' => 'professional',
-                'collaborator' => 'professional',
-                'reception' => 'reception',
-                'receptionist' => 'reception',
-            ],
-            'laora' => [
-                'manager' => 'manager',
-                'collaborator' => 'collaborator',
-            ],
-        ];
+        $maps = (array) config('application_profiles.legacy_employment_map', []);
 
         $rows = DB::table('employers as em')
             ->join('establishments as e', 'e.id', '=', 'em.establishment_id')
@@ -443,7 +322,7 @@ class ApplicationProfileSyncService
             ->where('profile_id', $adminProfileId)
             ->when($userId, fn ($query) => $query->where('id', $userId))
             ->pluck('id')
-            ->each(fn ($id) => $this->assign('peter-tecnet', (int) $id, 'super_admin', 'application', 0, 'legacy_global_profile'));
+            ->each(fn ($id) => $this->assign((string) config('application_profiles.root_application_slug', ''), (int) $id, 'super_admin', 'application', 0, 'legacy_global_profile'));
     }
 
     private function assign(

@@ -44,6 +44,7 @@ class CutinappLineupNotificationLifecycleTest extends TestCase
         $artist = $this->withHeaders($producerHeaders)
             ->postJson('/api/cutinapp/artists', [
                 'stage_name' => 'Safe Lineup Artist',
+                'artist_type' => 'band', // Formação gerenciada: vínculo confirmado sem aceite individual.
                 'is_published' => true,
             ])
             ->assertCreated()
@@ -59,7 +60,38 @@ class CutinappLineupNotificationLifecycleTest extends TestCase
                 'participation_type' => 'show',
                 'sort_order' => 0,
             ])
+            ->assertOk()
+            ->assertJsonPath('participation_status', 'confirmed');
+
+        // Um artista com conta própria recebe convite pendente, não confirmação automática.
+        $pendingArtist = $this->withHeaders($producerHeaders)
+            ->postJson('/api/cutinapp/artists', [
+                'stage_name' => 'Safe Lineup Solo Pending',
+                'artist_type' => 'solo',
+                'is_published' => true,
+            ])
+            ->assertCreated()
+            ->json('artist');
+
+        $this->withHeaders($participantHeaders)
+            ->postJson('/api/cutinapp/follow', ['target_type' => 'artist', 'target_id' => $pendingArtist['id']])
             ->assertOk();
+
+        $this->withHeaders($producerHeaders)
+            ->postJson('/api/cutinapp/events/' . $event['id'] . '/artists', [
+                'artist_id' => $pendingArtist['id'],
+                'participation_type' => 'show',
+                'sort_order' => 1,
+            ])
+            ->assertOk()
+            ->assertJsonPath('participation_status', 'pending');
+
+        $this->assertDatabaseHas('event_artist', [
+            'app_id' => $app->id,
+            'event_id' => $event['id'],
+            'artist_id' => $pendingArtist['id'],
+            'status' => 'pending',
+        ]);
 
         $this->assertDatabaseMissing('app_notifications', [
             'app_id' => $app->id,
@@ -90,6 +122,7 @@ class CutinappLineupNotificationLifecycleTest extends TestCase
         ]);
 
         $this->assertSame(1, $this->lineupNotificationCount($app->id, $participant->id, $event['id']));
+        $this->assertFalse($this->hasLineupNotificationForArtist($app->id, $participant->id, $event['id'], $pendingArtist['id']));
 
         $this->withHeaders($producerHeaders)
             ->postJson('/api/cutinapp/events/' . $event['id'] . '/unpublish')
@@ -99,6 +132,19 @@ class CutinappLineupNotificationLifecycleTest extends TestCase
             ->assertOk();
 
         $this->assertSame(1, $this->lineupNotificationCount($app->id, $participant->id, $event['id']));
+        $this->assertFalse($this->hasLineupNotificationForArtist($app->id, $participant->id, $event['id'], $pendingArtist['id']));
+    }
+
+    private function hasLineupNotificationForArtist(int $appId, int $userId, int $eventId, int $artistId): bool
+    {
+        return DB::table('app_notifications')
+            ->where('app_id', $appId)
+            ->where('user_id', $userId)
+            ->where('type', 'artist_lineup')
+            ->where('reference_type', 'event')
+            ->where('reference_id', $eventId)
+            ->where('data->artist_id', $artistId)
+            ->exists();
     }
 
     private function lineupNotificationCount(int $appId, int $userId, int $eventId): int

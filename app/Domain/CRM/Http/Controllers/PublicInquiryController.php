@@ -227,7 +227,7 @@ final class PublicInquiryController extends Controller
             'Origem de aquisição: ' . $acquisitionSource,
             $attributionLine ? 'Atribuição: ' . $attributionLine : null,
             $serviceSlug ? 'Serviço: ' . $serviceSlug : null,
-            $item ? 'Item Nexus: #' . $item->id . ' · ' . $item->name . ' · modelo=' . ($item->pricing_model ?: 'fixed') : null,
+            $item ? 'Item do catálogo: #' . $item->id . ' · ' . $item->name . ' · modelo=' . ($item->pricing_model ?: 'fixed') : null,
             $budget ? 'Orçamento informado: ' . $budget : null,
             $urgency ? 'Urgência: ' . $urgency : null,
             $company ? 'Empresa: ' . $company : null,

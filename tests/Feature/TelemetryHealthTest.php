@@ -20,6 +20,8 @@ class TelemetryHealthTest extends TestCase
         Cache::flush();
         Event::fake([EcosystemUpdated::class]);
 
+        $frontendVersion = (string) config('telemetry.frontend_version');
+
         $profile = Profile::create(['name' => 'Administrador', 'permissions' => []]);
         $admin = User::create([
             'first_name' => 'Admin',
@@ -45,7 +47,7 @@ class TelemetryHealthTest extends TestCase
                     'timestamp' => now()->subSeconds(5)->toIso8601String(),
                     'page' => '/events',
                     'label' => 'Sessão iniciada',
-                    'metadata' => ['telemetry_schema' => '3', 'telemetry_version' => '3.3.0'],
+                    'metadata' => ['telemetry_schema' => '3', 'telemetry_version' => $frontendVersion],
                 ],
                 [
                     'id' => 'health-event-view',
@@ -77,20 +79,21 @@ class TelemetryHealthTest extends TestCase
             'X-Peter-App' => $app->slug,
             'Origin' => $app->url,
             'X-Telemetry-Schema' => '3',
-            'X-Peter-Telemetry' => '3.3.0',
+            'X-Peter-Telemetry' => $frontendVersion,
         ]))->assertStatus(202)->assertJson(['accepted' => 3]);
 
         $health = $this->withHeaders($authorization)
             ->getJson('/api/admin/ecosystem/telemetry/health')
             ->assertOk()
             ->assertJsonPath('expected.schema', '3')
-            ->assertJsonPath('expected.version', '3.3.0');
+            ->assertJsonPath('expected.version', $frontendVersion);
 
         $healthApp = collect($health->json('applications'))->firstWhere('slug', $app->slug);
         $this->assertNotNull($healthApp);
         $this->assertSame('healthy', $healthApp['status']);
         $this->assertSame('3', $healthApp['latest_schema']);
-        $this->assertSame('3.3.0', $healthApp['latest_version']);
+        $this->assertSame($frontendVersion, $healthApp['latest_version']);
+        $this->assertSame([], $healthApp['alerts']);
         $this->assertSame(3, $healthApp['events_24h']);
 
         $this->withHeaders($authorization)
@@ -109,5 +112,34 @@ class TelemetryHealthTest extends TestCase
             ->assertJsonPath('events.1.metadata.action', 'view');
 
         Event::assertDispatched(EcosystemUpdated::class, fn (EcosystemUpdated $event) => in_array('telemetry', $event->modules, true));
+
+        // Uma versão antiga continua sinalizada, sem rebaixar a versão canônica esperada.
+        $this->postJson('/api/interactions/batch', [
+            'session_id' => 'health-session-outdated',
+            'events' => [[
+                'id' => 'health-sdk-outdated',
+                'type' => 'session_start',
+                'timestamp' => now()->toIso8601String(),
+                'page' => '/events',
+                'label' => 'SDK desatualizado',
+                'metadata' => ['telemetry_schema' => '3', 'telemetry_version' => '0.0.1'],
+            ]],
+        ], array_merge($authorization, [
+            'X-Peter-App' => $app->slug,
+            'Origin' => $app->url,
+            'X-Telemetry-Schema' => '3',
+            'X-Peter-Telemetry' => '0.0.1',
+        ]))->assertStatus(202)->assertJson(['accepted' => 1]);
+
+        Cache::forget('admin:telemetry:health:v2');
+        $outdatedHealth = $this->withHeaders($authorization)
+            ->getJson('/api/admin/ecosystem/telemetry/health')
+            ->assertOk()
+            ->assertJsonPath('expected.version', $frontendVersion);
+        $outdatedApp = collect($outdatedHealth->json('applications'))->firstWhere('slug', $app->slug);
+        $this->assertNotNull($outdatedApp);
+        $this->assertSame('warning', $outdatedApp['status']);
+        $this->assertSame('0.0.1', $outdatedApp['latest_version']);
+        $this->assertContains('sdk_outdated', array_column($outdatedApp['alerts'], 'code'));
     }
 }

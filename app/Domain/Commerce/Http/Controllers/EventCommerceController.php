@@ -15,6 +15,7 @@ use App\Models\Ticket;
 use App\Services\AsaasPaymentService;
 use App\Services\CommercePaymentSettlementService;
 use App\Services\MerchantPaymentAccountService;
+use App\Services\Independence\ListingCommercePolicy;
 use App\Services\MercadoPagoService;
 use App\Services\OrganizationSalesReadinessService;
 use App\Support\ApplicationContext;
@@ -32,6 +33,7 @@ final class EventCommerceController extends Controller
         private readonly CommercePaymentSettlementService $settlement,
         private readonly MerchantPaymentAccountService $accounts,
         private readonly OrganizationSalesReadinessService $salesReadiness,
+        private readonly ListingCommercePolicy $listingCommerce,
     ) {}
 
     public function catalog(Request $request, string $slug)
@@ -46,7 +48,7 @@ final class EventCommerceController extends Controller
             ->with('production')
             ->firstOrFail();
 
-        $salesClosed = $event->salesClosed();
+        $salesClosed = $event->salesClosed() || ! $this->listingCommerce->allowsLegacyOrVerified($event);
         $userId = (int) ($request->user()?->id ?? 0);
 
         $tickets = Ticket::query()
@@ -58,7 +60,7 @@ final class EventCommerceController extends Controller
             ->each(function (Ticket $ticket) use ($salesClosed, $userId) {
                 $this->appendUserTicketAvailability($ticket, $userId);
 
-                if ($salesClosed || $ticket->getAttribute('remaining_per_user') === 0) {
+                if ($salesClosed || $ticket->curatorial_information_only || $ticket->getAttribute('remaining_per_user') === 0) {
                     $ticket->setAttribute('available', false);
                 }
             });
@@ -172,7 +174,8 @@ final class EventCommerceController extends Controller
             ->where('is_active', true)
             ->findOrFail($itemId);
 
-        $this->appendItemAvailability($eventItem, $event->salesClosed());
+        $salesClosed = $event->salesClosed() || ! $this->listingCommerce->allowsLegacyOrVerified($event);
+        $this->appendItemAvailability($eventItem, $salesClosed);
 
         $sourceItem = null;
         if ((int) $eventItem->source_item_id > 0) {
@@ -334,13 +337,18 @@ final class EventCommerceController extends Controller
                 : 'Este evento não está disponível para venda.'
         );
 
+        $this->listingCommerce->assertLegacyOrVerified($eventForReadiness);
+
         $initialReadiness = $this->accounts->readiness((int) $eventForReadiness->production_id);
 
         if ($data['payment_method'] !== 'free') {
+            // Informar primeiro quando o gateway está desabilitado; a falta
+            // de habilitação não deve ser confundida com pendência cadastral.
+            // Os dois bloqueios continuam obrigatórios para qualquer venda.
+            abort_if(! $initialReadiness['available'], 422, $initialReadiness['message']);
+
             $salesReadiness = $this->salesReadiness->status((int) $eventForReadiness->production_id);
             abort_unless($salesReadiness['ready'], 428, $salesReadiness['message']);
-
-            abort_if(! $initialReadiness['available'], 422, $initialReadiness['message']);
             abort_if(
                 ! in_array($data['payment_method'], $initialReadiness['methods'], true),
                 422,
@@ -399,6 +407,8 @@ final class EventCommerceController extends Controller
                     : 'Este evento não está disponível para venda.'
             );
 
+            $this->listingCommerce->assertLegacyOrVerified($event);
+
             $expiresAt = $data['payment_method'] === 'boleto'
                 ? now('America/Sao_Paulo')->addDays(max(1, (int) config('services.asaas.boleto_due_days', 1)))->endOfDay()
                 : now()->addMinutes($expirationMinutes);
@@ -425,8 +435,10 @@ final class EventCommerceController extends Controller
                     ->lockForUpdate()
                     ->firstOrFail();
 
-                abort_if($ticket->informational_only, 403, 'Ingresso curatorial informativo: compra não autorizada.');
-                abort_if($ticket->price === null, 403, 'O preço deste ingresso ainda não foi confirmado.');
+                abort_if($ticket->informational_only, 403,
+                    'Este ingresso é informativo e não pode ser comprado.');
+                abort_if($ticket->price === null, 403,
+                    'O valor deste ingresso ainda não foi confirmado.');
                 abort_if($ticket->limit_date && now()->greaterThan($ticket->limit_date), 422, "O lote {$ticket->name} não está mais disponível.");
 
                 $qty = (int) $requested['quantity'];
@@ -1010,6 +1022,7 @@ final class EventCommerceController extends Controller
             ? EventItem::query()->where('app_id', $this->context->id())->where('event_id', $event->id)->findOrFail($itemId)
             : new EventItem(['app_id' => $this->context->id(), 'event_id' => $event->id]);
 
+        $this->listingCommerce->assertLegacyOrVerified($event);
         $item->fill($data)->save();
         return response()->json(['item' => $item], $itemId ? 200 : 201);
     }

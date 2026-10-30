@@ -21,11 +21,11 @@ class TicketSaleProducerMail extends Mailable
         $application = $this->order->event?->application;
         $mailBrand = app(ApplicationMailBrandingService::class)->forApplication(
             $application,
-            $application?->name ?: 'Cutinapp',
-            $application?->url ?: 'https://cutinapp.petertecnet.com.br'
+            $application?->name ?: (string) config('app.name'),
+            $application?->url ?: (string) config('app.url')
         );
         $applicationName = $mailBrand['name'];
-        $frontendUrl = rtrim((string)($application?->url ?: 'https://cutinapp.petertecnet.com.br'), '/');
+        $frontendUrl = rtrim((string)($application?->url ?: (string) config('app.url')), '/');
         $saleUrl = $frontendUrl.'/producer/sales/'.($this->order->production_id ?: '').'/'.$this->order->public_id;
 
         $mail = $this->subject('Nova venda de ingresso: '.$eventTitle.' | '.$applicationName)

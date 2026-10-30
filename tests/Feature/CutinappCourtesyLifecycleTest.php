@@ -7,11 +7,13 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
+use Tests\Concerns\UsesAuthorizedLegacyListingFixture;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
 class CutinappCourtesyLifecycleTest extends TestCase
 {
     use RefreshDatabase;
+    use UsesAuthorizedLegacyListingFixture;
 
     public function test_courtesy_can_be_listed_updated_claimed_and_then_is_protected(): void
     {
@@ -75,6 +77,7 @@ class CutinappCourtesyLifecycleTest extends TestCase
             ->postJson("/api/cutinapp/events/{$eventId}/publish")
             ->assertOk();
 
+        $this->authorizeLegacyListingFixture((int) $eventId, (int) $producer->id);
         $participant = $this->user('Participante Cortesia', 'courtesy-participant@cutinapp.test');
         $participantHeaders = $this->headersFor($participant);
 

@@ -18,6 +18,15 @@ class FinancialPayoutSecurityTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Estes cenários exercitam o fluxo automático Asaas, não o modo manual Pix.
+        // A escolha fica isolada ao teste e não altera o provider padrão do sistema.
+        config()->set('services.finance.payout_provider', 'asaas');
+    }
+
     public function test_in_flight_payout_reserves_balance_and_done_webhook_is_authenticated_and_idempotent(): void
     {
         config()->set('services.finance.payout_hold_hours', 0);
@@ -197,7 +206,7 @@ class FinancialPayoutSecurityTest extends TestCase
                 'pix_key' => 'financeiro@terceiro.test',
             ])
             ->assertStatus(422)
-            ->assertJsonPath('errors.pix_key.0', 'A chave Pix informada não pertence ao CPF verificado deste produtor.');
+            ->assertJsonPath('errors.pix_key.0', 'A chave Pix informada não pertence ao documento verificado deste produtor.');
 
         $this->assertDatabaseCount('financial_payout_destinations', 0);
     }

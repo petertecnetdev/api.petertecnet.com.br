@@ -42,8 +42,10 @@ class ProspectInvitationMail extends Mailable
     {
         $appName = trim((string) $this->application->name) ?: 'Peter Tecnet';
         $slug = strtolower(trim((string) $this->application->slug));
+        // Event producer invitation comes from the application's configured profile set.
+        $supportsProductions = isset(config('application_profiles.applications', [])[$slug]['profiles']['producer']);
 
-        if (in_array($slug, ['cutinapp', 'cutin-app', 'catchnap', 'catinapp'], true)) {
+        if ($supportsProductions) {
             return match ($this->persona) {
                 'producer' => [
                     'label' => 'Produtor',

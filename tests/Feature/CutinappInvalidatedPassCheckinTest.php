@@ -8,11 +8,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
+use Tests\Concerns\UsesAuthorizedLegacyListingFixture;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
 class CutinappInvalidatedPassCheckinTest extends TestCase
 {
     use RefreshDatabase;
+    use UsesAuthorizedLegacyListingFixture;
 
     public function test_refunded_and_charged_back_passes_are_rejected_and_excluded_from_stats(): void
     {
@@ -48,6 +50,7 @@ class CutinappInvalidatedPassCheckinTest extends TestCase
             ->postJson('/api/cutinapp/events/' . $event['id'] . '/publish')
             ->assertOk();
 
+        $this->authorizeLegacyListingFixture((int) $event['id'], (int) $owner->id);
         $firstPass = $this->withHeaders($this->headersFor($refundedParticipant))
             ->postJson('/api/cutinapp/passes/claim/' . $ticket['id'])
             ->assertCreated()

@@ -62,6 +62,42 @@ final class MerchantPaymentAccountService
             (int) $organization->user_id
         );
 
+        $primary = strtolower(trim((string) config('services.finance.payment_primary_provider', 'mercadopago')));
+        if ($primary === 'asaas') {
+            // Não liberar comércio em um provedor desabilitado ou sem credenciais.
+            // Um fallback só pode ser usado quando expressamente configurado.
+            if ($this->platformCollectionEnabled()
+                && trim((string) config('services.asaas.api_key')) !== '') {
+                return $this->readinessPayload(
+                    available: true,
+                    merchantConnected: false,
+                    settlementMode: 'platform_collection',
+                    publicKey: '',
+                    methods: ['pix', 'boleto'],
+                    message: $recipientReady
+                        ? 'Asaas habilitado. O produtor receberá por repasse conforme a configuração financeira.'
+                        : 'Asaas habilitado. O repasse exige cadastro de recebimento verificado.',
+                    payoutReady: $recipientReady,
+                    provider: 'asaas',
+                    requiresPayerDocument: true,
+                    cardMode: 'redirect',
+                );
+            }
+
+            if (strtolower(trim((string) config('services.finance.payment_fallback_provider', ''))) !== 'mercadopago') {
+                return $this->readinessPayload(
+                    available: false,
+                    merchantConnected: false,
+                    settlementMode: 'sales_disabled',
+                    publicKey: '',
+                    methods: [],
+                    message: 'O provedor de pagamento selecionado não está habilitado.',
+                    payoutReady: $recipientReady,
+                    provider: null,
+                );
+            }
+        }
+
         $mercadoPago = $this->mercadoPagoReadiness($organizationId, $recipientReady);
         if ($mercadoPago['available']) {
             return $mercadoPago;

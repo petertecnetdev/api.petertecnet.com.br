@@ -52,7 +52,10 @@ class AiDescriptionServiceTest extends TestCase
         $this->assertSame('@cf/meta/llama-3.3-70b-instruct-fp8-fast', $result['model']);
         $this->assertStringContainsString('A quinta-feira muda o ritmo da semana.', $result['description']);
         $this->assertStringContainsString('O evento começa às 22:00 e segue até 05:00 do dia seguinte.', $result['description']);
-        $this->assertStringContainsString('Lista VIP Mulher — gratuito; 1º Lote — R$ 10,00', $result['description']);
+        // O compositor transforma opções em texto natural sem inventar preços.
+        // Conferir os dois valores, mesmo sem preservar a pontuação da entrada.
+        $this->assertStringContainsString('Lista VIP Mulher com entrada gratuita', $result['description']);
+        $this->assertStringContainsString('1º Lote por R$ 10,00', $result['description']);
         $this->assertStringNotContainsString('**', $result['description']);
 
         Http::assertSent(function (Request $request): bool {

@@ -40,7 +40,10 @@ class AgentChatGithubServiceTest extends TestCase
         $this->assertSame('Pedro', $snapshot['messages'][0]['author']);
         $this->assertSame('@todos', $snapshot['messages'][0]['to']);
         $this->assertSame('REQUEST', $snapshot['messages'][0]['status']);
-        $this->assertFalse($snapshot['write_enabled']);
+        // Sem token o envio direto fica desabilitado. O outbox local pode
+        // continuar gravável para sincronização assíncrona por GitHub Actions.
+        $this->assertFalse($snapshot['direct_write_enabled']);
+        $this->assertSame('github_actions_sync', $snapshot['delivery_mode']);
     }
 
     public function test_it_appends_without_overwriting_existing_messages(): void

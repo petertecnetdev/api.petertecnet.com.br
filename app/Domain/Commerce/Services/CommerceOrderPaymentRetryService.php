@@ -5,6 +5,7 @@ namespace App\Domain\Commerce\Services;
 use App\Models\CommerceOrder;
 use App\Models\CommercePayment;
 use App\Models\User;
+use App\Services\Independence\ListingCommercePolicy;
 use App\Services\AsaasPaymentService;
 use App\Services\CommercePaymentSettlementService;
 use App\Services\MerchantPaymentAccountService;
@@ -37,6 +38,24 @@ final class CommerceOrderPaymentRetryService
                 ->lockForUpdate()
                 ->firstOrFail();
 
+            // Nunca iniciar outra cobrança com tenant divergente ou pagamento já confirmado.
+            // A reconciliação financeira pertence ao SettlementService e exige handoff.
+            self::assertRetrySafety($order, (int) $this->context->id());
+            app(ListingCommercePolicy::class)->assertLegacyOrVerified($order->event);
+
+            // Um pedido legado pode ter sido criado antes de o ingresso ser
+            // classificado como informativo. A retomada não pode reexibir um
+            // PIX pendente nem iniciar outra cobrança para esse ingresso.
+            foreach ($order->items()->where('type', 'ticket')->with('ticket')->get() as $line) {
+                $ticket = $line->ticket;
+                if (! $ticket
+                    || (int) $ticket->app_id !== (int) $order->app_id
+                    || (int) $ticket->event_id !== (int) $order->event_id
+                    || $ticket->informational_only) {
+                    throw new HttpException(403, 'Este ingresso é apenas informativo e não permite retomada de pagamento.');
+                }
+            }
+
             if ($order->status === 'paid') {
                 throw new HttpException(409, 'Este pedido já está pago.');
             }
@@ -63,6 +82,9 @@ final class CommerceOrderPaymentRetryService
                 ->first(fn ($payment) => ! in_array(strtolower((string) $payment->status), $terminalStatuses, true));
 
             if ($existing) {
+                // Não apresentar uma cobrança de outra modalidade como retomada válida.
+                self::assertExistingPaymentMethod($existing, $method);
+
                 return [$order, $existing, null];
             }
 
@@ -93,9 +115,140 @@ final class CommerceOrderPaymentRetryService
         return $this->retryMercadoPagoPix($order, $user, (int) $retryAttempt);
     }
 
+    private static function assertRetrySafety(CommerceOrder $order, int $appId): void
+    {
+        if ($appId < 1
+            || (int) $order->app_id !== $appId
+            || ! $order->event
+            || ! $order->production
+            || (int) $order->event->app_id !== $appId
+            || (int) $order->production->app_id !== $appId
+            || (int) $order->event->production_id !== (int) $order->production_id) {
+            throw new HttpException(403, 'O pedido não pertence a esta aplicação ou produção.');
+        }
+
+        foreach ($order->payments as $payment) {
+            if ((int) $payment->app_id !== $appId
+                || (int) $payment->order_id !== (int) $order->id) {
+                throw new HttpException(409, 'As tentativas de pagamento deste pedido exigem verificação.');
+            }
+
+            if (strtolower((string) $payment->status) === 'paid') {
+                // Pending + paid deve ser conciliado, jamais gerar POST adicional.
+                throw new HttpException(409, 'Pagamento já confirmado. Aguarde a conciliação do pedido.');
+            }
+        }
+    }
+
+    private static function assertExistingPaymentMethod(CommercePayment $payment, string $method): void
+    {
+        if (strtolower((string) $payment->method) !== $method) {
+            throw new HttpException(409, 'A tentativa existente usa outra forma de pagamento.');
+        }
+    }
+
+    /**
+     * Uma cobrança recuperada por referência não comprova, sozinha, que pertence
+     * ao pedido. Validar a identidade remota antes de persistir ou liquidar.
+     */
+    private static function assertAsaasPaymentMatches(
+        array $remote,
+        string $customerId,
+        string $method,
+        float $amount,
+        string $externalReference,
+    ): void {
+        $expectedBillingType = match ($method) {
+            'pix' => 'PIX',
+            'card' => 'CREDIT_CARD',
+            'boleto' => 'BOLETO',
+            default => throw new HttpException(422, 'Forma de pagamento inválida.'),
+        };
+
+        $value = $remote['value'] ?? null;
+        $remoteAmount = is_numeric($value) ? (float) $value : NAN;
+        if (! is_string($remote['id'] ?? null) || trim($remote['id']) === ''
+            || ! is_string($remote['customer'] ?? null) || trim($remote['customer']) !== $customerId
+            || ! is_string($remote['billingType'] ?? null) || strtoupper(trim($remote['billingType'])) !== $expectedBillingType
+            || ! is_string($remote['externalReference'] ?? null) || trim($remote['externalReference']) !== $externalReference
+            || ! is_string($remote['status'] ?? null) || trim($remote['status']) === ''
+            || ! is_finite($remoteAmount)
+            || (int) round($remoteAmount * 100) !== (int) round($amount * 100)
+            || ! empty($remote['deleted'])) {
+            throw new HttpException(409, 'A cobrança retornada pelo Asaas exige verificação antes da retomada.');
+        }
+    }
+
+    /**
+     * O retorno do POST Pix não pode associar ao pedido uma cobrança remota
+     * de outro comprador, aplicação ou valor. Validar antes de gravar efeitos.
+     */
+    private static function assertMercadoPagoPixPaymentMatches(array $remote, CommerceOrder $order): void
+    {
+        $id = $remote['id'] ?? null;
+        $amount = $remote['transaction_amount'] ?? null;
+        $remoteAmount = is_numeric($amount) ? (float) $amount : NAN;
+        $metadata = $remote['metadata'] ?? null;
+
+        if ((! is_int($id) && ! is_string($id))
+            || ! ctype_digit((string) $id)
+            || (int) $id < 1
+            || ! is_string($remote['external_reference'] ?? null)
+            || $remote['external_reference'] !== (string) $order->public_id
+            || ! is_string($remote['payment_method_id'] ?? null)
+            || strtolower($remote['payment_method_id']) !== 'pix'
+            || ! is_string($remote['status'] ?? null)
+            || trim($remote['status']) === ''
+            || ! is_finite($remoteAmount)
+            || (int) round($remoteAmount * 100) !== (int) round((float) $order->total * 100)
+            || ! is_array($metadata)
+            || (string) ($metadata['application_id'] ?? '') !== (string) $order->app_id
+            || (string) ($metadata['order_id'] ?? '') !== (string) $order->id
+            || (string) ($metadata['order_public_id'] ?? '') !== (string) $order->public_id
+            || (string) ($metadata['organization_id'] ?? '') !== (string) $order->production_id) {
+            throw new HttpException(409, 'O PIX retornado pelo provedor exige verificação antes da retomada.');
+        }
+    }
+
     public function retryPix(string $publicId, User $user): array
     {
         return $this->retry($publicId, $user, ['payment_method' => 'pix']);
+    }
+
+    /**
+     * Retomada Asaas é exclusivamente recuperação até o serviço financeiro
+     * oferecer busca paginada conclusiva e criação idempotente sob handoff.
+     * Consulta inconclusiva, vazia ou ambígua jamais autoriza POST /payments.
+     */
+    private function findUniqueAsaasRecoveryCandidate(string $externalReference): array
+    {
+        $payments = $this->asaas->listPaymentsByExternalReference($externalReference);
+
+        if (count($payments) !== 1
+            || ! is_string($payments[0]['id'] ?? null)
+            || trim($payments[0]['id']) === '') {
+            throw new HttpException(409, 'A cobrança Asaas exige conciliação antes de uma nova tentativa.');
+        }
+
+        return $payments[0];
+    }
+
+    /**
+     * Não criar clientes durante a retomada: a identidade do pagador remoto
+     * deve ser estável entre a listagem e a consulta por ID.
+     */
+    private static function assertAsaasRecoveryCustomer(array $candidate, array $remote): string
+    {
+        $listedCustomer = $candidate['customer'] ?? null;
+        $fetchedCustomer = $remote['customer'] ?? null;
+
+        if (! is_string($listedCustomer) || trim($listedCustomer) === ''
+            || ! is_string($fetchedCustomer)
+            || trim($listedCustomer) !== trim($fetchedCustomer)) {
+            throw new HttpException(409, 'A identidade do pagador Asaas exige conciliação antes da retomada.');
+        }
+
+        return trim($listedCustomer);
     }
 
     private function retryAsaas(
@@ -111,56 +264,60 @@ final class CommerceOrderPaymentRetryService
             throw new HttpException(422, 'Informe o CPF ou CNPJ do pagador para retomar o pagamento.');
         }
 
-        $name = trim((string) ($data['payer_name'] ?? ''))
-            ?: trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? ''))
-            ?: (string) ($user->name ?? '')
-            ?: (string) ($user->email ?? 'Pagador');
-
         try {
-            $customer = $this->asaas->findOrCreateCustomer(
-                (int) $user->id,
-                $name,
-                $document,
-                $data['payer_email'] ?? $user->email ?? null,
-                $user->phone ?? null,
-            );
+            // Recuperação é somente leitura. findOrCreateCustomer pode emitir
+            // POST /customers quando um GET falha ou retorna dados incompletos.
+            // O customer deve ser o MESMO nas duas consultas da cobrança.
+            $candidate = $this->findUniqueAsaasRecoveryCandidate((string) $order->public_id);
 
-            $customerId = trim((string) ($customer['id'] ?? ''));
-            if ($customerId === '') {
-                throw new \RuntimeException('O Asaas não retornou o identificador do pagador.');
-            }
+            // Não chamar createOrRecoverPayment: pode criar uma nova cobrança
+            // após GET inconclusivo. Consultar exclusivamente o ID encontrado.
+            $remote = $this->asaas->getPayment(trim($candidate['id']));
+            $customerId = self::assertAsaasRecoveryCustomer($candidate, $remote);
 
-            $dueDate = $method === 'boleto'
-                ? $order->expires_at->copy()->timezone('America/Sao_Paulo')->toDateString()
-                : now('America/Sao_Paulo')->toDateString();
-
-            $applicationUrl = rtrim((string) ($this->context->application()->url ?: config('app.url')), '/');
-            $successUrl = $applicationUrl
-                . '/checkout/' . rawurlencode((string) ($order->event->slug ?? ''))
-                . '?payment_return=asaas&order=' . rawurlencode((string) $order->public_id);
-
-            $remote = $this->asaas->createOrRecoverPayment(
+            self::assertAsaasPaymentMatches(
+                $candidate,
                 $customerId,
                 $method,
                 (float) $order->total,
-                $dueDate,
                 (string) $order->public_id,
-                ($this->context->application()->name ?: 'Peter Tecnet') . ' - ' . ($order->event->title ?? 'Pedido'),
-                $successUrl,
+            );
+            self::assertAsaasPaymentMatches(
+                $remote,
+                $customerId,
+                $method,
+                (float) $order->total,
+                (string) $order->public_id,
             );
 
-            $providerId = trim((string) ($remote['id'] ?? ''));
-            if ($providerId === '') {
-                throw new \RuntimeException('O Asaas não retornou o identificador da cobrança.');
+            if (trim((string) $remote['id']) !== trim($candidate['id'])) {
+                throw new HttpException(409, 'A identidade da cobrança Asaas mudou durante a consulta.');
             }
 
-            $remoteValue = is_numeric($remote['value'] ?? null) ? (float) $remote['value'] : (float) $order->total;
+            // A indisponibilidade do QR/linha digitável não deve impedir
+            // a conciliação de uma cobrança já confirmada pelo provedor.
+            try {
+                if ($method === 'pix') {
+                    $remote['_pix'] = $this->asaas->getPixQrCode((string) $remote['id']);
+                } elseif ($method === 'boleto') {
+                    $remote['_boleto'] = $this->asaas->getBoletoIdentification((string) $remote['id']);
+                }
+            } catch (Throwable $exception) {
+                report($exception);
+            }
+
+            $providerId = trim((string) $remote['id']);
+
+            $remoteValue = (float) $remote['value'];
             $remoteNet = is_numeric($remote['netValue'] ?? null) ? (float) $remote['netValue'] : null;
             $providerFee = $remoteNet !== null ? max(0, round($remoteValue - $remoteNet, 2)) : 0.0;
             $pix = is_array($remote['_pix'] ?? null) ? $remote['_pix'] : [];
             $boleto = is_array($remote['_boleto'] ?? null) ? $remote['_boleto'] : [];
             $localStatus = $this->asaas->normalizeLocalStatus($remote);
-            $idempotencyKey = 'commerce-order-' . $order->public_id . '-retry-' . $retryAttempt;
+            $historicalKey = trim((string) data_get($order->metadata, 'provider_payment_idempotency_key', ''));
+            $idempotencyKey = $retryAttempt === 1
+                ? ($historicalKey !== '' ? $historicalKey : 'commerce-order-' . $order->public_id)
+                : 'commerce-order-' . $order->public_id . '-retry-' . $retryAttempt;
 
             $payment = CommercePayment::query()->updateOrCreate(
                 [
@@ -232,7 +389,14 @@ final class CommerceOrderPaymentRetryService
 
         $sellerToken = $usesMerchant ? $this->accounts->freshAccessToken($account)[1] : $platformToken;
         $settlementMode = $usesMerchant ? 'automatic_split' : 'platform_collection';
-        $idempotencyKey = 'commerce-order-' . $order->public_id . '-retry-' . $retryAttempt;
+        // Quando a chamada inicial ao gateway falha antes de persistirmos um
+        // pagamento, não sabemos se o provedor já aceitou a operação. Reusar
+        // a chave original evita emitir outro PIX para o mesmo pedido.
+        // Uma nova chave só é permitida após uma tentativa terminal conhecida.
+        $originalKey = trim((string) data_get($order->metadata, 'provider_payment_idempotency_key', ''));
+        $idempotencyKey = $retryAttempt === 1
+            ? ($originalKey !== '' ? $originalKey : 'commerce-order-' . $order->public_id)
+            : 'commerce-order-' . $order->public_id . '-retry-' . $retryAttempt;
 
         $payload = [
             'transaction_amount' => (float) $order->total,
@@ -261,6 +425,8 @@ final class CommerceOrderPaymentRetryService
             report($exception);
             throw new HttpException(503, 'O provedor de PIX não respondeu. O pedido continua reservado; tente novamente.');
         }
+
+        self::assertMercadoPagoPixPaymentMatches($remote, $order);
 
         $transaction = data_get($remote, 'point_of_interaction.transaction_data', []);
         $providerFee = collect($remote['fee_details'] ?? [])->sum(fn ($fee) => (float) ($fee['amount'] ?? 0));

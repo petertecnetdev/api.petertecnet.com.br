@@ -679,7 +679,7 @@ final class GlobalSearchService
         $ranked = $candidates
             ->map(function (User $user) use ($personQuery, $viewerSignals, $followers, $promotersOnly, $privacy, $artistByUser, $searchPerformance) {
                 $name = trim(implode(' ', array_filter([$user->first_name, $user->last_name])));
-                $title = $name !== '' ? $name : ($user->user_name ?: 'Usuário Cutinapp');
+                $title = $name !== '' ? $name : ($user->user_name ?: 'Usuário');
                 $social = $privacy->get((int) $user->id);
                 $showCity = ! $social || (bool) ($social->show_city ?? true);
                 $relatedArtist = $artistByUser->get((int) $user->id);

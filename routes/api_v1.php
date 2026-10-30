@@ -135,6 +135,11 @@ Route::prefix('v1/apps/{application}')
 
         Route::middleware(['auth:api', 'token.version'])->group(function () {
             Route::get('/me', [AccountContextController::class, 'show']);
+            Route::middleware('app.capability:events')->group(function () {
+                Route::post('/independence/claims', [\App\Http\Controllers\Api\Independence\OwnershipClaimIntakeController::class, 'store'])->middleware('throttle:4,1');
+                Route::get('/independence/claims/mine', [\App\Http\Controllers\Api\Independence\OwnershipClaimIntakeController::class, 'mine'])->middleware('throttle:30,1');
+            });
+
             Route::post('/global-search/convert', [GlobalSearchController::class, 'convert'])->middleware('throttle:120,1');
             Route::get('/global-search/recent', [GlobalSearchController::class, 'recent']);
             Route::delete('/global-search/recent', [GlobalSearchController::class, 'clearRecent']);
@@ -271,6 +276,7 @@ Route::prefix('v1/apps/{application}')
                 Route::get('/passes/{passId}', [EventPassController::class, 'show'])->whereNumber('passId');
                 Route::post('/passes/claim/{ticketId}', [EventPassController::class, 'claim'])->whereNumber('ticketId');
                 Route::get('/events/{eventId}/participants', [EventPassController::class, 'participants'])->whereNumber('eventId');
+                Route::get('/checkin/events', [EventPassController::class, 'operableEvents'])->middleware('throttle:60,1');
                 Route::post('/checkin', [EventPassController::class, 'validateToken'])->middleware('throttle:120,1');
                 Route::get('/checkin/events/{eventId}/stats', [EventPassController::class, 'eventStats'])->whereNumber('eventId');
             });

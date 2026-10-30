@@ -225,7 +225,7 @@ final class SearchCampaignService
         return $base + [
             'type' => 'user',
             'id' => (int) $user->id,
-            'title' => $name !== '' ? $name : ($user->user_name ?: 'Usuário Cutinapp'),
+            'title' => $name !== '' ? $name : ($user->user_name ?: 'Usuário'),
             'subtitle' => $user->user_name ? '@'.ltrim($user->user_name, '@') : null,
             'image' => $user->avatar,
             'url' => '/profile/'.$user->id,

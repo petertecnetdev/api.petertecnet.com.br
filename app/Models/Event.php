@@ -177,7 +177,9 @@ class Event extends Model
     {
         $status = $this->temporalStatus($at);
         $public = $this->is_published && ! $this->is_cancelled && ! $this->is_private;
-        $salesOpen = $public && $status !== 'past' && ! $this->salesClosed($at);
+        $curatorial = data_get($this->extra_info, 'curation.ticket_checkout_enabled') === false
+            || data_get($this->extra_info, 'curation.sale_mode') === 'information_only';
+        $salesOpen = $public && $status !== 'past' && ! $this->salesClosed($at) && ! $curatorial;
 
         $community = $this->isCommunity();
 
