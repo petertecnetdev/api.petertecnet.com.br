@@ -13,7 +13,7 @@ class CutinappApplicationOwnershipTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_application_id_is_preserved_from_production_to_ticket_and_participant(): void
+    public function test_application_id_is_preserved_and_unapproved_pass_claim_does_not_issue_qr(): void
     {
         $application = Application::query()->where('slug', 'cutinapp')->firstOrFail();
         $producer = $this->user('Produtor', 'ownership-producer@cutinapp.test');
@@ -57,13 +57,20 @@ class CutinappApplicationOwnershipTest extends TestCase
             ->postJson('/api/cutinapp/events/' . $event['id'] . '/publish')
             ->assertOk();
 
+        // O cadastro self-service ainda não possui aprovação humana e autorização
+        // comercial independente: o app correto não concede emissão por si só.
         $participant = $this->user('Participante', 'ownership-participant@cutinapp.test');
         $this->withHeaders($this->headersFor($participant))
             ->postJson('/api/cutinapp/passes/claim/' . $ticket['id'])
-            ->assertCreated()
-            ->assertJsonPath('pass.user_id', $participant->id)
-            ->assertJsonPath('pass.event_id', $event['id'])
-            ->assertJsonPath('pass.ticket_id', $ticket['id']);
+            ->assertForbidden()
+            ->assertJsonMissingPath('pass.token');
+
+        $this->assertDatabaseMissing('event_passes', [
+            'app_id' => $application->id,
+            'user_id' => $participant->id,
+            'event_id' => $event['id'],
+            'ticket_id' => $ticket['id'],
+        ]);
 
         $this->assertDatabaseHas('productions', ['id' => $production['id'], 'app_id' => $application->id]);
         $this->assertDatabaseHas('events', ['id' => $event['id'], 'app_id' => $application->id]);
@@ -72,12 +79,6 @@ class CutinappApplicationOwnershipTest extends TestCase
             'application_id' => $application->id,
             'user_id' => $producer->id,
             'role' => 'producer',
-            'status' => 'active',
-        ]);
-        $this->assertDatabaseHas('application_user', [
-            'application_id' => $application->id,
-            'user_id' => $participant->id,
-            'role' => 'participant',
             'status' => 'active',
         ]);
     }
