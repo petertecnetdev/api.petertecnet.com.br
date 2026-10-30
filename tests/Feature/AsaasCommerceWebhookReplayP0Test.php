@@ -547,6 +547,95 @@ class AsaasCommerceWebhookReplayP0Test extends TestCase
         Http::assertNotSent(fn ($request) => $request->method() === 'POST');
     }
 
+    public function test_pagamento_tardio_apos_reclassificacao_curatorial_e_auditavel_sem_venda_qr_ou_ledger(): void
+    {
+        config()->set('services.asaas.api_key', 'chave-falsa-de-teste');
+        \Illuminate\Support\Facades\Mail::fake();
+        [$payment, $order, $item] = $this->persistedPaidCheckoutFixture();
+        $payment->update(['provider_txid' => null]);
+
+        // Checkout criado quando o cadastro era comercial. Antes do webhook,
+        // a ficha e o ingresso deixam de ser comercializáveis.
+        DB::table('events')->where('id', $order->event_id)->update([
+            'listing_source' => 'curatorial',
+            'ownership_status' => 'unclaimed',
+            'verification_status' => 'unverified',
+            'extra_info' => json_encode([
+                'curation' => ['sale_mode' => 'information_only', 'ticket_checkout_enabled' => false],
+            ], JSON_THROW_ON_ERROR),
+        ]);
+        DB::table('tickets')->where('id', $item->ticket_id)->update(['informational_only' => true]);
+        Http::fake(fn () => Http::response($this->paidAsaasPayload(), 200));
+
+        $service = app(AsaasCommerceWebhookService::class);
+        $event = [
+            'id' => 'evt-pagamento-curatorial-tardio-p0',
+            'event' => 'PAYMENT_RECEIVED',
+            'payment' => $this->paidAsaasPayload(),
+        ];
+        $service->process($event);
+
+        $this->assertDatabaseHas('commerce_payments', [
+            'id' => $payment->id, 'status' => 'paid',
+        ]);
+        $this->assertDatabaseHas('commerce_orders', [
+            'id' => $order->id, 'status' => 'cancelled',
+        ]);
+        $metadata = json_decode((string) DB::table('commerce_orders')->where('id', $order->id)->value('metadata'), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('blocked', $metadata['fulfillment_status'] ?? null);
+        $this->assertSame('required', $metadata['financial_reconciliation_status'] ?? null);
+        $this->assertDatabaseCount('event_passes', 0);
+        $this->assertDatabaseCount('ledger_entries', 0);
+        $this->assertDatabaseMissing('interactions', [
+            'entity_type' => 'CommerceOrder',
+            'entity_id' => $order->id,
+            'interaction_type' => 'payment_paid',
+        ]);
+        $this->assertNotNull(DB::table('financial_webhook_events')
+            ->where('provider', 'asaas')->where('event_id', $event['id'])
+            ->value('processed_at'));
+
+        // Replays do mesmo webhook e de outro ID financeiro: mesmo status
+        // bloqueado, sem emissão tardia mesmo se o anúncio voltar ao ar.
+        $service->process($event);
+        DB::table('events')->where('id', $order->event_id)->update([
+            'listing_source' => 'legacy_organizer',
+            'ownership_status' => null,
+            'verification_status' => 'legacy_owner_record',
+            'extra_info' => null,
+        ]);
+        DB::table('tickets')->where('id', $item->ticket_id)->update(['informational_only' => false]);
+        $service->process(array_replace($event, ['id' => 'evt-pagamento-curatorial-replay-p0']));
+
+        $this->assertDatabaseHas('commerce_orders', ['id' => $order->id, 'status' => 'cancelled']);
+        $this->assertDatabaseCount('event_passes', 0);
+        $this->assertDatabaseCount('ledger_entries', 0);
+        $this->assertSame(2, DB::table('financial_webhook_events')
+            ->where('provider', 'asaas')->whereNotNull('processed_at')->count());
+        Http::assertSentCount(2);
+    }
+
+    public function test_pagamento_tardio_de_lote_informativo_nao_emite_qr_nem_ledger(): void
+    {
+        config()->set('services.asaas.api_key', 'chave-falsa-de-teste');
+        \Illuminate\Support\Facades\Mail::fake();
+        [$payment, $order, $item] = $this->persistedPaidCheckoutFixture();
+        $payment->update(['provider_txid' => null]);
+        DB::table('tickets')->where('id', $item->ticket_id)
+            ->update(['informational_only' => true]);
+        Http::fake(fn () => Http::response($this->paidAsaasPayload(), 200));
+        app(AsaasCommerceWebhookService::class)->process([
+            'id' => 'evt-lote-informativo-tardio-p0',
+            'event' => 'PAYMENT_RECEIVED',
+            'payment' => $this->paidAsaasPayload(),
+        ]);
+
+        $this->assertDatabaseHas('commerce_orders', ['id' => $order->id, 'status' => 'cancelled']);
+        $this->assertDatabaseHas('commerce_payments', ['id' => $payment->id, 'status' => 'paid']);
+        $this->assertDatabaseCount('event_passes', 0);
+        $this->assertDatabaseCount('ledger_entries', 0);
+    }
+
     public function test_payment_received_pix_get_divergente_nao_liquida_nem_reprocessa_recibo_pendente(): void
     {
         config()->set('services.asaas.api_key', 'chave-falsa-de-teste');
