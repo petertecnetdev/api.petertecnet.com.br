@@ -124,6 +124,16 @@ class AsaasCommerceWebhookReplayP0Test extends TestCase
             ->where('event_id', 'evt-replay-p0')
             ->update(['payload' => '{"marcador":"imutavel"}']);
 
+        // MySQL pode normalizar a representação textual de JSON. Comparar o
+        // conteúdo semântico e preservar também os bytes gravados no replay.
+        $receiptBefore = DB::table('financial_webhook_events')
+            ->where('provider', 'asaas')->where('event_id', 'evt-replay-p0')
+            ->first(['payload', 'processed_at']);
+        $this->assertNotNull($receiptBefore);
+        $payloadBefore = json_decode((string) $receiptBefore->payload, true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame(['marcador' => 'imutavel'], $payloadBefore);
+        $this->assertNotNull($receiptBefore->processed_at);
+
         $service->process([
             'id' => 'evt-replay-p0',
             'event' => 'EVENTO_DESCONHECIDO',
@@ -131,9 +141,17 @@ class AsaasCommerceWebhookReplayP0Test extends TestCase
         ]);
 
         $this->assertDatabaseCount('financial_webhook_events', 1);
-        $this->assertSame('{"marcador":"imutavel"}', DB::table('financial_webhook_events')
+        $receiptAfter = DB::table('financial_webhook_events')
             ->where('provider', 'asaas')->where('event_id', 'evt-replay-p0')
-            ->value('payload'));
+            ->first(['payload', 'processed_at']);
+        $this->assertNotNull($receiptAfter);
+        $this->assertSame(
+            $payloadBefore,
+            json_decode((string) $receiptAfter->payload, true, 512, JSON_THROW_ON_ERROR),
+            'Replay não pode modificar o conteúdo do payload persistido.'
+        );
+        $this->assertSame($receiptBefore->payload, $receiptAfter->payload, 'Replay não pode regravar o payload.');
+        $this->assertSame($receiptBefore->processed_at, $receiptAfter->processed_at, 'Replay não pode alterar processed_at.');
     }
 
     public function test_distinct_webhook_ids_remain_independently_processable(): void
