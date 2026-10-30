@@ -7,7 +7,7 @@ use App\Domain\Discovery\Services\SearchAnalyticsService;
 use App\Domain\Discovery\Services\SearchCampaignService;
 use App\Domain\Discovery\Services\SearchQueryParser;
 use App\Http\Controllers\Controller;
-use App\Models\Production;
+use App\Domain\Discovery\Services\ProducerInsightsAccessService;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schema;
@@ -20,6 +20,7 @@ final class GlobalSearchController extends Controller
         private readonly GlobalSearchService $search,
         private readonly SearchAnalyticsService $analytics,
         private readonly SearchCampaignService $campaigns,
+        private readonly ProducerInsightsAccessService $producerAccess,
     ) {}
 
     public function index(Request $request)
@@ -221,16 +222,15 @@ final class GlobalSearchController extends Controller
             'days' => 'nullable|integer|min:1|max:180',
         ]);
 
-        $production = Production::query()
-            ->where('app_id', $this->context->id())
-            ->findOrFail((int) $data['production_id']);
-
-        $user = $request->user();
-        abort_unless($user->hasProfile('Administrador') || (int) $production->user_id === (int) $user->id, 403);
+        $productionId = $this->producerAccess->authorize(
+            $this->context->id(),
+            (int) $data['production_id'],
+            $request->user()
+        );
 
         return response()->json($this->analytics->producerDemand(
             $this->context->id(),
-            (int) $production->id,
+            $productionId,
             (int) ($data['days'] ?? 30)
         ));
     }
