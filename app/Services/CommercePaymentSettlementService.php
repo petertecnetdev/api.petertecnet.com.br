@@ -200,8 +200,7 @@ final class CommercePaymentSettlementService
 
         if (! $event || ! $production
             || (int) $event->production_id !== (int) $production->id
-            || ! $event->is_published || $event->is_cancelled
-            || (bool) $event->is_private) {
+            || $event->salesClosed()) {
             return false;
         }
 
