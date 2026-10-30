@@ -31,6 +31,7 @@ final class AsaasCommerceWebhookMysqlConcurrencyP0Test extends TestCase
         $this->assertSame('cutinapp_ci_test', DB::selectOne('SELECT DATABASE() AS name')->name);
         $this->assertTrue(function_exists('proc_open'), 'O runner precisa suportar processos PHP independentes.');
 
+        config()->set('services.asaas.api_key', 'chave-falsa-de-teste');
         Mail::fake();
         [$payment, $order, $item, $event, $remote] = $this->fixtureConcorrente();
         $this->assertSame('pending', $payment->status);
@@ -65,6 +66,7 @@ try {
         || getenv('GITHUB_ACTIONS') !== 'true') {
         throw new RuntimeException('Worker fora do MySQL efemero autorizado.');
     }
+    config()->set('services.asaas.api_key', 'chave-falsa-de-teste');
     DB::statement('SET SESSION innodb_lock_wait_timeout = 12');
     $connectionId = (int) DB::selectOne('SELECT CONNECTION_ID() AS id')->id;
     $event = json_decode(base64_decode($eventEncoded, true), true, 512, JSON_THROW_ON_ERROR);
