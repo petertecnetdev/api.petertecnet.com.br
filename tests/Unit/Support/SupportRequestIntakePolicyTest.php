@@ -2,7 +2,7 @@
 
 namespace Tests\Unit\Support;
 
-use App\Http\Controllers\SupportRequestController;
+use App\Services\SupportRequestIntakeService;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 use ReflectionMethod;
@@ -11,19 +11,19 @@ class SupportRequestIntakePolicyTest extends TestCase
 {
     public function test_payment_and_payout_cannot_be_downgraded_below_high_priority(): void
     {
-        $controller = new SupportRequestController();
-        $method = new ReflectionMethod($controller, 'priorityFor');
+        $intake = (new ReflectionClass(SupportRequestIntakeService::class))->newInstanceWithoutConstructor();
+        $method = new ReflectionMethod($intake, 'priorityFor');
         $method->setAccessible(true);
 
-        $this->assertSame('high', $method->invoke($controller, 'payment', 'low'));
-        $this->assertSame('high', $method->invoke($controller, 'payout', 'normal'));
-        $this->assertSame('critical', $method->invoke($controller, 'payment', 'critical'));
-        $this->assertSame('normal', $method->invoke($controller, 'bug', null));
+        $this->assertSame('high', $method->invoke($intake, 'payment', 'low'));
+        $this->assertSame('high', $method->invoke($intake, 'payout', 'normal'));
+        $this->assertSame('critical', $method->invoke($intake, 'payment', 'critical'));
+        $this->assertSame('normal', $method->invoke($intake, 'bug', null));
     }
 
     public function test_support_metadata_policy_only_declares_non_sensitive_operational_context(): void
     {
-        $reflection = new ReflectionClass(SupportRequestController::class);
+        $reflection = new ReflectionClass(SupportRequestIntakeService::class);
         $keys = $reflection->getConstant('SAFE_METADATA_KEYS');
 
         $this->assertContains('order_id', $keys);
