@@ -15,6 +15,49 @@ class AsaasCommerceWebhookReplayP0Test extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_rollback_da_reserva_financeira_permite_nova_tentativa_sem_replay_duplo(): void
+    {
+        $service = app(AsaasCommerceWebhookService::class);
+        $reserve = new \\ReflectionMethod(AsaasCommerceWebhookService::class, 'startReceipt');
+        $eventId = 'evt-rollback-reserva-financeira-p0';
+
+        // A reserva participa da transação chamadora: se a operação falhar
+        // antes do commit, não pode deixar um recibo fantasma bloqueando a
+        // reconciliação legítima. Não equivale a concorrência MySQL real.
+        try {
+            DB::transaction(function () use ($service, $reserve, $eventId): void {
+                $this->assertTrue($reserve->invoke($service, $eventId, 'PAYMENT_RECEIVED', [
+                    'id' => $eventId,
+                ]));
+
+                throw new RuntimeException('falha simulada antes do commit financeiro');
+            });
+            $this->fail('A falha simulada deveria abortar a transação.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('falha simulada antes do commit financeiro', $exception->getMessage());
+        }
+
+        $this->assertDatabaseMissing('financial_webhook_events', [
+            'provider' => 'asaas',
+            'event_id' => $eventId,
+        ]);
+
+        $this->assertTrue($reserve->invoke($service, $eventId, 'PAYMENT_RECEIVED', [
+            'id' => $eventId,
+        ]));
+        $this->assertFalse($reserve->invoke($service, $eventId, 'PAYMENT_RECEIVED', [
+            'id' => $eventId,
+        ]));
+        $this->assertDatabaseHas('financial_webhook_events', [
+            'provider' => 'asaas',
+            'event_id' => $eventId,
+            'processed_at' => null,
+        ]);
+        $this->assertDatabaseCount('financial_webhook_events', 1);
+        $this->assertDatabaseCount('ledger_entries', 0);
+        $this->assertDatabaseCount('event_passes', 0);
+    }
+
     public function test_webhook_receipt_is_reserved_only_once_before_processing_finishes(): void
     {
         $service = app(AsaasCommerceWebhookService::class);
