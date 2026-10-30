@@ -200,6 +200,178 @@ class AsaasCommerceWebhookReplayP0Test extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_checkout_paid_without_id_fails_closed_before_lookup_or_settlement(): void
+    {
+        config()->set('services.asaas.api_key', 'chave-falsa-de-teste');
+        Http::fake();
+
+        $this->assertRejected(fn () => app(AsaasCommerceWebhookService::class)->process([
+            'id' => 'evt-checkout-sem-id-p0',
+            'event' => 'CHECKOUT_PAID',
+            'checkout' => [
+                'externalReference' => 'pedido-de-outra-pessoa',
+                'status' => 'PAID',
+                'items' => [['value' => 20.00, 'quantity' => 1]],
+            ],
+        ]));
+
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('ledger_entries', 0);
+        $this->assertDatabaseCount('event_passes', 0);
+        $this->assertDatabaseHas('financial_webhook_events', [
+            'provider' => 'asaas',
+            'event_id' => 'evt-checkout-sem-id-p0',
+            'processed_at' => null,
+        ]);
+    }
+
+    public function test_checkout_paid_requires_exact_checkout_reference_status_and_items_before_get(): void
+    {
+        config()->set('services.asaas.api_key', 'chave-falsa-de-teste');
+        [$payment, $order] = $this->localPaymentPair();
+        $payment->provider_txid = 'checkout-asaas-p0';
+        Http::fake();
+
+        foreach ([
+            ['id' => ''],
+            ['id' => 'checkout-de-outro-pedido'],
+            ['externalReference' => null],
+            ['externalReference' => 'pedido-de-outro-app'],
+            ['status' => null],
+            ['status' => 'PENDING'],
+            ['items' => []],
+            ['items' => [['value' => 10.00, 'quantity' => 1]]],
+            ['items' => [['value' => 20.00, 'quantity' => 0]]],
+            ['items' => [['value' => 'invalido', 'quantity' => 1]]],
+        ] as $change) {
+            $this->assertRejected(fn () => $this->verifyCheckoutPaid(
+                $payment, $order, array_replace($this->paidCheckoutPayload(), $change)
+            ));
+        }
+
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('ledger_entries', 0);
+        $this->assertDatabaseCount('event_passes', 0);
+    }
+
+    public function test_checkout_paid_blocks_cross_app_order_and_unbound_payment_before_get(): void
+    {
+        config()->set('services.asaas.api_key', 'chave-falsa-de-teste');
+        Http::fake();
+
+        foreach (['app_id', 'order_id', 'amount', 'order_total', 'provider_payment_id', 'provider_txid'] as $field) {
+            [$payment, $order] = $this->localPaymentPair();
+            $payment->provider_txid = 'checkout-asaas-p0';
+            if ($field === 'app_id') {
+                $order->app_id = 99;
+            } elseif ($field === 'order_id') {
+                $payment->order_id = 999;
+            } elseif ($field === 'amount') {
+                $payment->amount = 21.00;
+            } elseif ($field === 'order_total') {
+                $order->total = 21.00;
+            } elseif ($field === 'provider_payment_id') {
+                $payment->provider_payment_id = null;
+            } else {
+                $payment->provider_txid = null;
+            }
+
+            $this->assertRejected(fn () => $this->verifyCheckoutPaid(
+                $payment, $order, $this->paidCheckoutPayload()
+            ));
+        }
+
+        Http::assertNothingSent();
+        $this->assertDatabaseCount('ledger_entries', 0);
+        $this->assertDatabaseCount('event_passes', 0);
+    }
+
+    public function test_checkout_paid_remote_get_must_prove_payment_id_reference_value_and_status(): void
+    {
+        config()->set('services.asaas.api_key', 'chave-falsa-de-teste');
+        [$payment, $order] = $this->localPaymentPair();
+        $payment->provider_txid = 'checkout-asaas-p0';
+        $remote = $this->paidAsaasPayload();
+        Http::fake(function () use (&$remote) {
+            return Http::response($remote, 200);
+        });
+
+        foreach (['id', 'externalReference', 'value', 'billingType', 'status'] as $field) {
+            $remote = $this->paidAsaasPayload();
+            unset($remote[$field]);
+            $this->assertRejected(fn () => $this->verifyCheckoutPaid(
+                $payment, $order, $this->paidCheckoutPayload()
+            ));
+        }
+
+        foreach ([
+            ['id' => 'pay-outro'],
+            ['externalReference' => 'pedido-outro'],
+            ['value' => 19.99],
+            ['billingType' => 'BOLETO'],
+            ['status' => 'PENDING'],
+        ] as $change) {
+            $remote = array_replace($this->paidAsaasPayload(), $change);
+            $this->assertRejected(fn () => $this->verifyCheckoutPaid(
+                $payment, $order, $this->paidCheckoutPayload()
+            ));
+        }
+
+        Http::assertSentCount(10);
+        $this->assertDatabaseCount('ledger_entries', 0);
+        $this->assertDatabaseCount('event_passes', 0);
+    }
+
+    public function test_checkout_paid_legitimate_binding_requires_one_remote_get_and_no_post(): void
+    {
+        config()->set('services.asaas.api_key', 'chave-falsa-de-teste');
+        [$payment, $order] = $this->localPaymentPair();
+        $payment->provider_txid = 'checkout-asaas-p0';
+        Http::fake(fn () => Http::response($this->paidAsaasPayload(), 200));
+
+        $verified = $this->verifyCheckoutPaid($payment, $order, $this->paidCheckoutPayload());
+
+        $this->assertSame('pay-asaas-p0', $verified['id']);
+        Http::assertSentCount(1);
+        Http::assertSent(fn ($request) => $request->method() === 'GET'
+            && str_ends_with($request->url(), '/payments/pay-asaas-p0'));
+        Http::assertNotSent(fn ($request) => $request->method() === 'POST');
+        $this->assertDatabaseCount('ledger_entries', 0);
+        $this->assertDatabaseCount('event_passes', 0);
+    }
+
+    public function test_checkout_paid_gateway_failure_cannot_prove_settlement(): void
+    {
+        config()->set('services.asaas.api_key', 'chave-falsa-de-teste');
+        [$payment, $order] = $this->localPaymentPair();
+        $payment->provider_txid = 'checkout-asaas-p0';
+        Http::fake(fn () => Http::response(['errors' => [['description' => 'Indisponível']]], 503));
+
+        $this->assertRejected(fn () => $this->verifyCheckoutPaid(
+            $payment, $order, $this->paidCheckoutPayload()
+        ));
+        Http::assertSentCount(1);
+        $this->assertDatabaseCount('ledger_entries', 0);
+        $this->assertDatabaseCount('event_passes', 0);
+    }
+
+    private function verifyCheckoutPaid(CommercePayment $payment, CommerceOrder $order, array $checkout): array
+    {
+        $method = new \\ReflectionMethod(AsaasCommerceWebhookService::class, 'verifiedPaidCheckoutPayload');
+
+        return $method->invoke(app(AsaasCommerceWebhookService::class), $payment, $order, $checkout);
+    }
+
+    private function paidCheckoutPayload(): array
+    {
+        return [
+            'id' => 'checkout-asaas-p0',
+            'externalReference' => 'pedido-asaas-p0',
+            'status' => 'PAID',
+            'items' => [['value' => 20.00, 'quantity' => 1]],
+        ];
+    }
+
     private function verifyPaid(CommercePayment $payment, CommerceOrder $order, array $notification): array
     {
         $method = new \ReflectionMethod(AsaasCommerceWebhookService::class, 'verifiedPaidPayload');
