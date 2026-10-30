@@ -642,6 +642,62 @@ class CutinappCommerceProductionSafetyTest extends TestCase
         // Mockery::once() impede um segundo POST financeiro durante o retry.
     }
 
+    public function test_pix_retry_blocks_existing_pending_payment_when_ticket_becomes_informational(): void
+    {
+        config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
+        config()->set('services.finance.payment_primary_provider', 'mercadopago');
+        config()->set('services.mercadopago.access_token', 'test-payment-token');
+
+        [, $event, $ticket] = $this->paidEventFixture('informational-ticket-retry');
+        $mercadoPago = Mockery::mock(MercadoPagoService::class);
+        $mercadoPago->shouldReceive('createPayment')->once()->andReturn([
+            'id' => 24681100,
+            'status' => 'pending',
+            'fee_details' => [],
+            'point_of_interaction' => [
+                'transaction_data' => [
+                    'transaction_id' => 'pix-informational-ticket-retry',
+                    'qr_code' => '000201-informational-ticket-retry',
+                    'qr_code_base64' => 'dGVzdA==',
+                ],
+            ],
+        ]);
+        $this->app->instance(MercadoPagoService::class, $mercadoPago);
+
+        $buyer = $this->user('Comprador Retomada Informativa', 'buyer-ticket-retry@cutinapp.test');
+        $headers = $this->headersFor($buyer);
+        $this->withHeaders($headers)
+            ->postJson('/api/cutinapp/checkout', [
+                'event_id' => $event['id'],
+                'tickets' => [['id' => $ticket['id'], 'quantity' => 1]],
+                'payment_method' => 'pix',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('payment.status', 'pending');
+
+        $order = DB::table('commerce_orders')->where('event_id', $event['id'])->first();
+        $this->assertNotNull($order);
+        $this->assertDatabaseHas('commerce_payments', ['order_id' => $order->id, 'status' => 'pending']);
+
+        // A alteração posterior é no ingresso, não na origem do evento.
+        // Um PIX existente não deve ser reexibido como opção de compra.
+        DB::table('tickets')->where('id', $ticket['id'])->update(['curatorial_information_only' => true]);
+        Http::fake();
+
+        $this->withHeaders($headers)
+            ->postJson('/api/v1/apps/cutinapp/commerce/orders/' . $order->public_id . '/payment/retry', [
+                'payment_method' => 'pix',
+            ])
+            ->assertStatus(403);
+
+        $this->assertDatabaseHas('commerce_orders', ['id' => $order->id, 'status' => 'pending']);
+        $this->assertDatabaseHas('commerce_payments', ['order_id' => $order->id, 'status' => 'pending']);
+        $this->assertDatabaseCount('commerce_payments', 1);
+        $this->assertDatabaseCount('ledger_entries', 0);
+        $this->assertDatabaseCount('event_passes', 0);
+        Http::assertNothingSent();
+    }
+
     private function paidEventFixture(string $suffix): array
     {
         $producer = $this->user('Produtor', "producer-{$suffix}@cutinapp.test");

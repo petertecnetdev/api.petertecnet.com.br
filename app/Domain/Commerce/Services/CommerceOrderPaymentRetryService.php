@@ -43,6 +43,19 @@ final class CommerceOrderPaymentRetryService
             self::assertRetrySafety($order, (int) $this->context->id());
             app(ListingCommercePolicy::class)->assertLegacyOrVerified($order->event);
 
+            // Um pedido legado pode ter sido criado antes de o ingresso ser
+            // classificado como informativo. A retomada não pode reexibir um
+            // PIX pendente nem iniciar outra cobrança para esse ingresso.
+            foreach ($order->items()->where('type', 'ticket')->get() as $line) {
+                $ticket = \\App\\Models\\Ticket::query()->find($line->ticket_id);
+                if (! $ticket
+                    || (int) $ticket->app_id !== (int) $order->app_id
+                    || (int) $ticket->event_id !== (int) $order->event_id
+                    || $ticket->informational_only) {
+                    throw new HttpException(403, 'Este ingresso é apenas informativo e não permite retomada de pagamento.');
+                }
+            }
+
             if ($order->status === 'paid') {
                 throw new HttpException(409, 'Este pedido já está pago.');
             }
