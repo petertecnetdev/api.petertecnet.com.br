@@ -7,11 +7,13 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
+use Tests\Concerns\UsesAuthorizedLegacyListingFixture;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
 class CutinappEventCapacityTest extends TestCase
 {
     use RefreshDatabase;
+    use UsesAuthorizedLegacyListingFixture;
 
     public function test_event_capacity_caps_claims_across_different_ticket_batches(): void
     {
@@ -62,6 +64,7 @@ class CutinappEventCapacityTest extends TestCase
             ->postJson("/api/cutinapp/events/{$eventId}/publish")
             ->assertOk();
 
+        $this->authorizeLegacyListingFixture((int) $eventId, (int) $producer->id);
         $firstParticipant = $this->user('Participante Um', 'capacity-one@cutinapp.test');
         $secondParticipant = $this->user('Participante Dois', 'capacity-two@cutinapp.test');
 
