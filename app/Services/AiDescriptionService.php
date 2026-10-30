@@ -191,7 +191,7 @@ class AiDescriptionService
         ];
 
         $system = <<<'PROMPT'
-Você é o planejador editorial invisível da Cutinapp. Antes da redação final, crie um plano curto para uma descrição de evento.
+Você é o planejador editorial invisível da plataforma de eventos. Antes da redação final, crie um plano curto para uma descrição de evento.
 
 O plano deve:
 - preservar a intenção do rascunho do produtor;
@@ -277,7 +277,7 @@ PROMPT;
         ];
 
         $system = <<<'PROMPT'
-Você é o crítico editorial final da Cutinapp. Avalie descrições candidatas de um evento.
+Você é o crítico editorial final da plataforma de eventos. Avalie descrições candidatas de um evento.
 
 Critérios, nesta ordem:
 1. fidelidade aos fatos atuais e à intenção do rascunho;
