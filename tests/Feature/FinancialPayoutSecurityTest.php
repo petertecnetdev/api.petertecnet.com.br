@@ -206,7 +206,7 @@ class FinancialPayoutSecurityTest extends TestCase
                 'pix_key' => 'financeiro@terceiro.test',
             ])
             ->assertStatus(422)
-            ->assertJsonPath('errors.pix_key.0', 'A chave Pix informada não pertence ao CPF verificado deste produtor.');
+            ->assertJsonPath('errors.pix_key.0', 'A chave Pix informada não pertence ao documento verificado deste produtor.');
 
         $this->assertDatabaseCount('financial_payout_destinations', 0);
     }
