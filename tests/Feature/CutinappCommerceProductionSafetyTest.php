@@ -784,6 +784,99 @@ class CutinappCommerceProductionSafetyTest extends TestCase
         \Illuminate\Support\Facades\Mail::assertNothingQueued();
     }
 
+
+    public function test_liquidacao_tardia_apos_reclassificar_apenas_producao_nao_vende_ingresso(): void
+    {
+        // Reclassificar somente a produção deve invalidar a liquidação,
+        // mesmo quando evento e ingresso ainda parecem comercializáveis.
+        [, $event, $ticket, $productionId] = $this->paidEventFixture('settlement-production-curated');
+        $buyer = $this->user('Comprador Produção Curatorial', 'buyer-production-curated@cutinapp.test');
+        $appId = (int) DB::table('applications')->where('slug', 'cutinapp')->value('id');
+        \Illuminate\Support\Facades\Mail::fake();
+
+        $order = \App\Models\CommerceOrder::create([
+            'app_id' => $appId,
+            'public_id' => 'pedido-liquidacao-producao-curatorial-w1',
+            'event_id' => $event['id'],
+            'production_id' => $productionId,
+            'user_id' => $buyer->id,
+            'status' => 'pending',
+            'currency' => 'BRL',
+            'subtotal' => 20.00,
+            'platform_fee' => 2.00,
+            'processor_fee' => 0,
+            'discount_amount' => 0,
+            'total' => 20.00,
+            'producer_net' => 18.00,
+            'payment_method' => 'pix',
+            'metadata' => ['settlement_mode' => 'platform_collection'],
+        ]);
+        \App\Models\CommerceOrderItem::create([
+            'app_id' => $appId,
+            'order_id' => $order->id,
+            'type' => 'ticket',
+            'ticket_id' => $ticket['id'],
+            'name' => 'Inteira',
+            'unit_price' => 20.00,
+            'quantity' => 1,
+            'subtotal' => 20.00,
+        ]);
+        $payment = \App\Models\CommercePayment::create([
+            'app_id' => $appId,
+            'order_id' => $order->id,
+            'provider' => 'asaas',
+            'method' => 'pix',
+            'status' => 'pending',
+            'provider_payment_id' => 'pay-production-curated-w1',
+            'idempotency_key' => 'production-curated-w1',
+            'amount' => 20.00,
+            'provider_fee' => 0,
+        ]);
+
+        DB::table('establishments')->where('id', $productionId)->update([
+            'listing_source' => 'curated',
+        ]);
+        $this->assertDatabaseHas('events', [
+            'id' => $event['id'],
+            'listing_source' => 'legacy_organizer',
+        ]);
+        $this->assertDatabaseHas('tickets', [
+            'id' => $ticket['id'],
+            'curatorial_information_only' => false,
+        ]);
+
+        $service = app(\App\Services\CommercePaymentSettlementService::class);
+        $payload = [
+            'id' => 'pay-production-curated-w1',
+            'externalReference' => $order->public_id,
+            'value' => 20.00,
+            'status' => 'RECEIVED',
+        ];
+        $service->confirm($payment, $payload, 0.25);
+        $service->confirm($payment->fresh(), $payload, 0.25);
+
+        $this->assertDatabaseHas('commerce_payments', [
+            'id' => $payment->id,
+            'status' => 'paid',
+        ]);
+        $this->assertDatabaseHas('commerce_orders', [
+            'id' => $order->id,
+            'status' => 'cancelled',
+        ]);
+        $metadata = \App\Models\CommerceOrder::findOrFail($order->id)->metadata;
+        $this->assertSame('blocked', $metadata['fulfillment_status'] ?? null);
+        $this->assertSame('required', $metadata['financial_reconciliation_status'] ?? null);
+        $this->assertDatabaseCount('event_passes', 0);
+        $this->assertDatabaseCount('ledger_entries', 0);
+        $this->assertDatabaseMissing('interactions', [
+            'entity_type' => 'CommerceOrder',
+            'entity_id' => $order->id,
+            'interaction_type' => 'payment_paid',
+        ]);
+        \Illuminate\Support\Facades\Mail::assertNothingSent();
+        \Illuminate\Support\Facades\Mail::assertNothingQueued();
+    }
+
     private function paidEventFixture(string $suffix): array
     {
         $producer = $this->user('Produtor', "producer-{$suffix}@cutinapp.test");
