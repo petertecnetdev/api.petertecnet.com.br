@@ -8,11 +8,13 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
+use Tests\Concerns\UsesAuthorizedLegacyListingFixture;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
 class CutinappSocialNetworkLifecycleTest extends TestCase
 {
     use RefreshDatabase;
+    use UsesAuthorizedLegacyListingFixture;
 
     public function test_social_feed_notification_profile_and_report_moderation_work_together(): void
     {
@@ -70,6 +72,7 @@ class CutinappSocialNetworkLifecycleTest extends TestCase
             'status' => 'resolved', 'moderation_note' => 'Informação verificada pela equipe.',
         ])->assertOk()->assertJsonPath('report.status', 'resolved');
 
+        $this->authorizeLegacyListingFixture((int) $event['id'], (int) $producer->id);
         $pass = $this->withHeaders($uh)->postJson('/api/cutinapp/passes/claim/' . $ticket['id'])
             ->assertCreated()->json('pass');
 
