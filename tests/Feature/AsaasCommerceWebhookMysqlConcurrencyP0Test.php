@@ -240,11 +240,16 @@ PHP;
             'category' => 'production', 'type' => 'production',
             'establishment_type' => 'production', 'city' => 'Sao Paulo',
             'user_id' => $buyer->id, 'created_by' => $buyer->id, 'updated_by' => $buyer->id,
+            'ownership_status' => null, 'listing_source' => 'legacy_organizer',
+            'verification_status' => 'legacy_owner_record',
             'created_at' => now(), 'updated_at' => now(),
         ]);
         $eventId = DB::table('events')->insertGetId([
             'app_id' => $appId, 'app_slug' => 'cutinapp',
             'production_id' => $productionId, 'title' => 'Evento Concorrencia ' . $suffix,
+            'created_by_user_id' => $buyer->id,
+            'ownership_status' => null, 'listing_source' => 'legacy_organizer',
+            'verification_status' => 'legacy_owner_record',
             'slug' => 'evento-concor-' . $suffix,
             'start_date' => now()->addDay(), 'end_date' => now()->addDay()->addHours(4),
             'is_published' => true, 'is_private' => false, 'is_cancelled' => false,
