@@ -548,6 +548,63 @@ class CutinappCommerceProductionSafetyTest extends TestCase
         }
     }
 
+    public function test_curatorial_event_cannot_resume_existing_pending_pix_order_or_issue_pass(): void
+    {
+        config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
+        config()->set('services.finance.payment_primary_provider', 'mercadopago');
+        config()->set('services.mercadopago.access_token', 'test-payment-token');
+
+        [, $event, $ticket] = $this->paidEventFixture('curatorial-retry-pending');
+        $mercadoPago = Mockery::mock(MercadoPagoService::class);
+        $mercadoPago->shouldReceive('createPayment')->once()->andReturn([
+            'id' => 24681099,
+            'status' => 'pending',
+            'fee_details' => [],
+            'point_of_interaction' => [
+                'transaction_data' => [
+                    'transaction_id' => 'pix-curatorial-retry',
+                    'qr_code' => '000201-curatorial-retry',
+                    'qr_code_base64' => 'dGVzdA==',
+                ],
+            ],
+        ]);
+        $this->app->instance(MercadoPagoService::class, $mercadoPago);
+
+        $buyer = $this->user('Comprador Retomada Curatorial', 'buyer-curatorial-retry@cutinapp.test');
+        $headers = $this->headersFor($buyer);
+        $this->withHeaders($headers)
+            ->postJson('/api/cutinapp/checkout', [
+                'event_id' => $event['id'],
+                'tickets' => [['id' => $ticket['id'], 'quantity' => 1]],
+                'payment_method' => 'pix',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('order.status', 'pending');
+
+        $order = DB::table('commerce_orders')->where('event_id', $event['id'])->first();
+        $this->assertNotNull($order);
+        $this->assertDatabaseHas('commerce_payments', ['order_id' => $order->id, 'status' => 'pending']);
+
+        // O pedido era legítimo quando criado. Após identificar origem
+        // curatorial, nem a retomada de um PIX pendente pode reabrir a venda.
+        // Mantemos os demais marcadores legados para testar o fail-closed
+        // exclusivamente pela origem curatorial recém-identificada.
+        DB::table('events')->where('id', $event['id'])->update(['listing_source' => 'curated']);
+
+        $this->withHeaders($headers)
+            ->postJson('/api/v1/apps/cutinapp/commerce/orders/' . $order->public_id . '/payment/retry', [
+                'payment_method' => 'pix',
+            ])
+            ->assertStatus(403);
+
+        $this->assertDatabaseHas('commerce_orders', ['id' => $order->id, 'status' => 'pending']);
+        $this->assertDatabaseHas('commerce_payments', ['order_id' => $order->id, 'status' => 'pending']);
+        $this->assertDatabaseHas('inventory_reservations', ['order_id' => $order->id, 'released_at' => null]);
+        $this->assertDatabaseCount('ledger_entries', 0);
+        $this->assertDatabaseCount('event_passes', 0);
+        // Mockery::once() impede um segundo POST financeiro durante o retry.
+    }
+
     private function paidEventFixture(string $suffix): array
     {
         $producer = $this->user('Produtor', "producer-{$suffix}@cutinapp.test");
