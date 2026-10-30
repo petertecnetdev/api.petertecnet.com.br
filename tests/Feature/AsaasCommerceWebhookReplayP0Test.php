@@ -18,7 +18,7 @@ class AsaasCommerceWebhookReplayP0Test extends TestCase
     public function test_rollback_da_reserva_financeira_permite_nova_tentativa_sem_replay_duplo(): void
     {
         $service = app(AsaasCommerceWebhookService::class);
-        $reserve = new \\ReflectionMethod(AsaasCommerceWebhookService::class, 'startReceipt');
+        $reserve = new \ReflectionMethod(AsaasCommerceWebhookService::class, 'startReceipt');
         $eventId = 'evt-rollback-reserva-financeira-p0';
 
         // A reserva participa da transação chamadora: se a operação falhar
