@@ -355,6 +355,169 @@ class AsaasCommerceWebhookReplayP0Test extends TestCase
         $this->assertDatabaseCount('event_passes', 0);
     }
 
+
+    public function test_checkout_paid_persisted_order_settles_once_and_replay_never_duplicates_ledger_or_qr(): void
+    {
+        config()->set('services.asaas.api_key', 'chave-falsa-de-teste');
+        \Illuminate\Support\Facades\Mail::fake();
+        [$payment, $order, $item] = $this->persistedPaidCheckoutFixture();
+        Http::fake(fn () => Http::response($this->paidAsaasPayload(), 200));
+
+        $service = app(AsaasCommerceWebhookService::class);
+        $event = [
+            'id' => 'evt-checkout-integrado-p0',
+            'event' => 'CHECKOUT_PAID',
+            'checkout' => $this->paidCheckoutPayload(),
+        ];
+        $service->process($event);
+
+        $this->assertDatabaseHas('commerce_orders', ['id' => $order->id, 'app_id' => $order->app_id, 'status' => 'paid']);
+        $this->assertDatabaseHas('commerce_payments', ['id' => $payment->id, 'app_id' => $order->app_id, 'status' => 'paid']);
+        $this->assertDatabaseHas('financial_webhook_events', [
+            'provider' => 'asaas', 'event_id' => $event['id'], 'event_type' => 'CHECKOUT_PAID',
+        ]);
+        $this->assertNotNull(DB::table('financial_webhook_events')
+            ->where('provider', 'asaas')->where('event_id', $event['id'])->value('processed_at'));
+        $this->assertSame(1, DB::table('event_passes')
+            ->where('commerce_order_item_id', $item->id)->where('status', 'issued')->count());
+        $token = (string) DB::table('event_passes')->where('commerce_order_item_id', $item->id)->value('token');
+        $this->assertTrue(str_starts_with($token, 'PASS-'), 'O ingresso deve conter token de QR emitido.');
+        $this->assertEqualsCanonicalizing(
+            ['gross_sale', 'platform_fee', 'producer_credit'],
+            DB::table('ledger_entries')->where('payment_id', $payment->id)->pluck('type')->all()
+        );
+
+        // Mesmo event_id e outro webhook legítimo para a mesma cobrança:
+        // nenhum segundo QR, nenhuma segunda linha de ledger.
+        $service->process($event);
+        $service->process(array_replace($event, ['id' => 'evt-checkout-integrado-replay-p0']));
+
+        $this->assertSame(1, DB::table('event_passes')->where('commerce_order_item_id', $item->id)->count());
+        $this->assertSame($token, (string) DB::table('event_passes')
+            ->where('commerce_order_item_id', $item->id)->value('token'));
+        $this->assertSame(3, DB::table('ledger_entries')->where('payment_id', $payment->id)->count());
+        $this->assertSame(2, DB::table('financial_webhook_events')
+            ->where('provider', 'asaas')->whereNotNull('processed_at')->count());
+        Http::assertSentCount(2);
+        Http::assertSent(fn ($request) => $request->method() === 'GET'
+            && str_ends_with($request->url(), '/payments/pay-asaas-p0'));
+        Http::assertNotSent(fn ($request) => $request->method() === 'POST');
+    }
+
+    public function test_checkout_paid_persisted_order_with_invalid_binding_has_zero_financial_effects(): void
+    {
+        config()->set('services.asaas.api_key', 'chave-falsa-de-teste');
+        \Illuminate\Support\Facades\Mail::fake();
+        [$payment, $order, $item] = $this->persistedPaidCheckoutFixture();
+        Http::fake();
+
+        $event = [
+            'id' => 'evt-checkout-invalido-integrado-p0',
+            'event' => 'CHECKOUT_PAID',
+            'checkout' => array_replace($this->paidCheckoutPayload(), [
+                'externalReference' => 'pedido-de-outro-app',
+            ]),
+        ];
+        $service = app(AsaasCommerceWebhookService::class);
+        $this->assertRejected(fn () => $service->process($event));
+
+        $this->assertDatabaseHas('commerce_orders', ['id' => $order->id, 'status' => 'pending']);
+        $this->assertDatabaseHas('commerce_payments', ['id' => $payment->id, 'status' => 'pending']);
+        $this->assertDatabaseCount('ledger_entries', 0);
+        $this->assertDatabaseCount('event_passes', 0);
+        $this->assertDatabaseHas('financial_webhook_events', [
+            'provider' => 'asaas', 'event_id' => $event['id'], 'processed_at' => null,
+        ]);
+        Http::assertNothingSent();
+
+        // Recibo pendente não pode ser reaproveitado para liquidar no replay.
+        $service->process(array_replace($event, ['checkout' => $this->paidCheckoutPayload()]));
+        $this->assertDatabaseCount('ledger_entries', 0);
+        $this->assertDatabaseCount('event_passes', 0);
+        $this->assertDatabaseHas('commerce_payments', ['id' => $payment->id, 'status' => 'pending']);
+        Http::assertNothingSent();
+    }
+
+    /**
+     * Fixture persistida exclusivamente para testar liquidação de pedido já
+     * existente. Não concede proveniência comercial nem altera a policy.
+     */
+    private function persistedPaidCheckoutFixture(): array
+    {
+        $appId = (int) DB::table('applications')->where('slug', 'cutinapp')->value('id');
+        if ($appId <= 0) {
+            $appId = DB::table('applications')->insertGetId([
+                'name' => 'Cutinapp Teste', 'slug' => 'cutinapp', 'is_active' => true,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
+
+        $buyer = \App\Models\User::create([
+            'first_name' => 'Comprador',
+            'last_name' => 'Teste',
+            'email' => 'comprador-asaas-e2e@cutinapp.test',
+            'user_name' => 'comprador-asaas-e2e',
+            'password' => \Illuminate\Support\Facades\Hash::make('Test1234!'),
+            'email_verified_at' => now(),
+        ]);
+
+        $productionId = DB::table('establishments')->insertGetId([
+            'app_id' => $appId,
+            'app_slug' => 'cutinapp',
+            'name' => 'Produção E2E Asaas',
+            'fantasy' => 'Produção E2E Asaas',
+            'category' => 'production',
+            'type' => 'production',
+            'establishment_type' => 'production',
+            'city' => 'São Paulo',
+            'user_id' => $buyer->id,
+            'created_by' => $buyer->id,
+            'updated_by' => $buyer->id,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $eventId = DB::table('events')->insertGetId([
+            'app_id' => $appId, 'app_slug' => 'cutinapp',
+            'production_id' => $productionId,
+            'title' => 'Evento E2E Asaas',
+            'slug' => 'evento-asaas-e2e-p0',
+            'start_date' => now()->addDay(),
+            'end_date' => now()->addDay()->addHours(4),
+            'is_published' => true, 'is_private' => false, 'is_cancelled' => false,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $ticketId = DB::table('tickets')->insertGetId([
+            'app_id' => $appId, 'app_slug' => 'cutinapp',
+            'event_id' => $eventId, 'name' => 'Inteira E2E',
+            'quantity' => 10, 'price' => 20.00,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $order = CommerceOrder::create([
+            'app_id' => $appId, 'public_id' => 'pedido-asaas-p0',
+            'event_id' => $eventId, 'production_id' => $productionId,
+            'user_id' => $buyer->id, 'status' => 'pending', 'currency' => 'BRL',
+            'subtotal' => 20.00, 'platform_fee' => 2.00, 'processor_fee' => 0,
+            'discount_amount' => 0, 'total' => 20.00, 'producer_net' => 18.00,
+            'payment_method' => 'pix', 'metadata' => ['settlement_mode' => 'platform_collection'],
+        ]);
+        $item = \App\Models\CommerceOrderItem::create([
+            'app_id' => $appId, 'order_id' => $order->id,
+            'type' => 'ticket', 'ticket_id' => $ticketId,
+            'name' => 'Inteira E2E', 'unit_price' => 20.00,
+            'quantity' => 1, 'subtotal' => 20.00,
+        ]);
+        $payment = CommercePayment::create([
+            'app_id' => $appId, 'order_id' => $order->id,
+            'provider' => 'asaas', 'method' => 'pix', 'status' => 'pending',
+            'provider_payment_id' => 'pay-asaas-p0',
+            'provider_txid' => 'checkout-asaas-p0',
+            'idempotency_key' => 'asaas-e2e-p0',
+            'amount' => 20.00, 'provider_fee' => 0,
+        ]);
+
+        return [$payment, $order, $item];
+    }
+
     private function verifyCheckoutPaid(CommercePayment $payment, CommerceOrder $order, array $checkout): array
     {
         $method = new \ReflectionMethod(AsaasCommerceWebhookService::class, 'verifiedPaidCheckoutPayload');
