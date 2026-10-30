@@ -71,11 +71,22 @@ class CutinappEventCommunityTest extends TestCase
         $this->assertCount(1, $participantPost['replies']);
 
         $this->withHeaders($uh)->putJson('/api/cutinapp/events/' . $event['id'] . '/engagement', ['is_interested'=>true,'is_favorite'=>true])->assertOk();
-        $this->withHeaders($uh)->postJson('/api/cutinapp/passes/claim/' . $ticket['id'])->assertCreated();
+
+        // Participar da comunidade não equivale a ter autorização comercial.
+        // A ficha self-service ainda não foi aprovada por um responsável humano.
+        $this->withHeaders($uh)->postJson('/api/cutinapp/passes/claim/' . $ticket['id'])
+            ->assertForbidden()
+            ->assertJsonMissingPath('pass.token');
+        $this->assertDatabaseMissing('event_passes', [
+            'app_id' => $app->id,
+            'event_id' => $event['id'],
+            'ticket_id' => $ticket['id'],
+            'user_id' => $participant->id,
+        ]);
 
         $this->withHeaders($uh)->getJson('/api/cutinapp/profile/overview')
             ->assertOk()
-            ->assertJsonPath('stats.upcoming_with_ticket', 1)
+            ->assertJsonPath('stats.upcoming_with_ticket', 0)
             ->assertJsonPath('stats.interested', 1)
             ->assertJsonPath('stats.favorites', 1)
             ->assertJsonPath('stats.posts', 1)
