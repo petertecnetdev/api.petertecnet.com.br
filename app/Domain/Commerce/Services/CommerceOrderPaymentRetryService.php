@@ -46,8 +46,8 @@ final class CommerceOrderPaymentRetryService
             // Um pedido legado pode ter sido criado antes de o ingresso ser
             // classificado como informativo. A retomada não pode reexibir um
             // PIX pendente nem iniciar outra cobrança para esse ingresso.
-            foreach ($order->items()->where('type', 'ticket')->get() as $line) {
-                $ticket = \App\Models\Ticket::query()->find($line->ticket_id);
+            foreach ($order->items()->where('type', 'ticket')->with('ticket')->get() as $line) {
+                $ticket = $line->ticket;
                 if (! $ticket
                     || (int) $ticket->app_id !== (int) $order->app_id
                     || (int) $ticket->event_id !== (int) $order->event_id
