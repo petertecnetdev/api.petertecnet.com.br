@@ -466,6 +466,7 @@ class AsaasCommerceWebhookReplayP0Test extends TestCase
             'app_slug' => 'cutinapp',
             'name' => 'Produção E2E Asaas',
             'fantasy' => 'Produção E2E Asaas',
+            'slug' => 'producao-e2e-asaas',
             'category' => 'production',
             'type' => 'production',
             'establishment_type' => 'production',
