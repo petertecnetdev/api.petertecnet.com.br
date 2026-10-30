@@ -18,8 +18,8 @@ class SweepCuratorialContent extends Command
             $this->error('Execute a migration de curation_provenance antes da curadoria.');
             return self::FAILURE;
         }
-        $app = DB::table('applications')->where('slug', 'cutinapp')->first(['id']);
-        $owner = DB::table('users')->where('email', 'cutinapp@gmail.com')->first(['id']);
+        $app = DB::table('applications')->where('slug', (string) config('curation.application_slug'))->first(['id']);
+        $owner = DB::table('users')->where('email', (string) config('curation.owner_email'))->first(['id']);
         if (!$app || !$owner) {
             $this->error('Conta de curadoria ou aplicação não encontradas.');
             return self::FAILURE;
@@ -100,7 +100,7 @@ class SweepCuratorialContent extends Command
                 $clean=Editorial::removePromotionalReferences($p->description);
                 $newOther=$other;
                 if(preg_match('/(?:Origem|Fonte):|(?:shotgun|sympla)\\./iu',$other)) {
-                    $newOther='Perfil publicado pela curadoria da Cutinapp. A administração poderá ser solicitada pelo titular mediante verificação de identidade e titularidade.';
+                    $newOther='Perfil publicado pela curadoria da aplicação. A administração poderá ser solicitada pelo titular mediante verificação de identidade e titularidade.';
                 }
                 $website=Editorial::isTicketingSource($p->website_url)?null:$p->website_url;
                 $values=['description'=>$clean,'other_information'=>$newOther,'website_url'=>$website];
@@ -141,7 +141,7 @@ class SweepCuratorialContent extends Command
                 return self::SUCCESS;
             }
             foreach(['events_changed','productions_changed','artists_changed','provenance'] as $key) $report[$key]=0;
-            $backuppath='/tmp/cutinapp-curatorial-before-'.now()->format('Ymd-His').'.json';
+            $backuppath='/tmp/curation-editorial-before-'.now()->format('Ymd-His').'.json';
             // Cópia antes da transação, apenas dos campos cuja atualização foi planejada.
             $snapshot=$backup;
             if(file_put_contents($backuppath,json_encode($snapshot,JSON_UNESCAPED_UNICODE|JSON_PRETTY_PRINT))===false)
