@@ -1,6 +1,133 @@
 <?php
 
 return [
+    // Legacy role aliases belong to application configuration, not runtime services.
+    'event_application_slug' => 'cutinapp',
+    'root_application_slug' => 'peter-tecnet',
+    'legacy_membership_map' => [
+            'cutinapp' => [
+                'producer' => 'producer',
+                'promoter' => 'promoter',
+                'artist' => 'artist',
+                'production_manager' => 'production_manager',
+                'ticket_manager' => 'checkin_operator',
+                'checkin_operator' => 'checkin_operator',
+            ],
+            'rasoio' => [
+                'owner' => 'owner',
+                'manager' => 'manager',
+                'professional' => 'professional',
+                'barber' => 'professional',
+                'reception' => 'reception',
+                'receptionist' => 'reception',
+            ],
+            'nexus' => [
+                'owner' => 'owner',
+                'manager' => 'manager',
+                'operator' => 'operator',
+                'attendant' => 'operator',
+                'stock' => 'stock',
+                'cashier' => 'cashier',
+            ],
+            'plat' => [
+                'owner' => 'owner',
+                'manager' => 'manager',
+                'cashier' => 'cashier',
+                'attendant' => 'attendant',
+                'kitchen' => 'kitchen',
+                'stock' => 'stock',
+            ],
+            'payflow' => [
+                'owner' => 'owner',
+                'manager' => 'sales_manager',
+                'sales_manager' => 'sales_manager',
+                'sales' => 'sales',
+                'seller' => 'sales',
+                'finance' => 'finance',
+                'operations' => 'operations',
+                'support' => 'operations',
+            ],
+            'locaio' => [
+                'owner' => 'owner',
+                'manager' => 'manager',
+                'professional' => 'professional',
+                'provider' => 'professional',
+                'reception' => 'reception',
+                'receptionist' => 'reception',
+            ],
+            'laora' => [
+                'owner' => 'owner',
+                'manager' => 'manager',
+                'collaborator' => 'collaborator',
+            ],
+            'prevora' => [
+                'validator' => 'validator',
+                'moderator' => 'moderator',
+                'curator' => 'curator',
+            ],
+            'peter-tecnet' => [
+                'super_admin' => 'super_admin',
+                'users_admin' => 'users_admin',
+                'establishments_admin' => 'establishments_admin',
+                'moderator' => 'moderator',
+                'finance' => 'finance',
+                'support' => 'support',
+                'auditor' => 'auditor',
+            ],
+        ],
+    'legacy_employment_map' => [
+            'rasoio' => [
+                'manager' => 'manager',
+                'professional' => 'professional',
+                'barber' => 'professional',
+                'collaborator' => 'professional',
+                'reception' => 'reception',
+                'receptionist' => 'reception',
+            ],
+            'nexus' => [
+                'manager' => 'manager',
+                'operator' => 'operator',
+                'attendant' => 'operator',
+                'stock' => 'stock',
+                'cashier' => 'cashier',
+            ],
+            'plat' => [
+                'manager' => 'manager',
+                'cashier' => 'cashier',
+                'attendant' => 'attendant',
+                'kitchen' => 'kitchen',
+                'stock' => 'stock',
+            ],
+            'payflow' => [
+                'manager' => 'sales_manager',
+                'sales_manager' => 'sales_manager',
+                'sales' => 'sales',
+                'seller' => 'sales',
+                'finance' => 'finance',
+                'operations' => 'operations',
+                'support' => 'operations',
+            ],
+            'locaio' => [
+                'manager' => 'manager',
+                'professional' => 'professional',
+                'provider' => 'professional',
+                'collaborator' => 'professional',
+                'reception' => 'reception',
+                'receptionist' => 'reception',
+            ],
+            'laora' => [
+                'manager' => 'manager',
+                'collaborator' => 'collaborator',
+            ],
+        ],
+    'resource_owner_map' => [
+            'rasoio' => 'owner',
+            'nexus' => 'owner',
+            'plat' => 'owner',
+            'payflow' => 'owner',
+            'locaio' => 'owner',
+            'laora' => 'owner',
+        ],
     'applications' => [
         'cutinapp' => [
             'profiles' => [
