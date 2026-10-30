@@ -195,7 +195,7 @@ jobs:
       mysql:
         image: mysql:8.0
         env:
-          MYSQL_DATABASE: cutinapp_ci
+          MYSQL_DATABASE: cutinapp_ci_test
           MYSQL_USER: ci_independence
           MYSQL_PASSWORD: ci_mysql_ephemeral
           MYSQL_ROOT_PASSWORD: ci_root_ephemeral
@@ -216,7 +216,7 @@ jobs:
       DB_CONNECTION: mysql
       DB_HOST: 127.0.0.1
       DB_PORT: '3306'
-      DB_DATABASE: cutinapp_ci
+      DB_DATABASE: cutinapp_ci_test
       DB_USERNAME: ci_independence
       DB_PASSWORD: ci_mysql_ephemeral
       CACHE_STORE: array
@@ -253,7 +253,7 @@ jobs:
           DB_CONNECTION=mysql
           DB_HOST=127.0.0.1
           DB_PORT=3306
-          DB_DATABASE=cutinapp_ci
+          DB_DATABASE=cutinapp_ci_test
           DB_USERNAME=ci_independence
           DB_PASSWORD=ci_mysql_ephemeral
           CACHE_STORE=array
@@ -271,7 +271,7 @@ jobs:
           set -euo pipefail
           # A migration de compatibilidade cria triggers. Com binlog ativo, MySQL 8
           # exige esta configuração do servidor; nunca aplicar em banco externo.
-          php -r '$db = new PDO("mysql:host=127.0.0.1;port=3306;dbname=cutinapp_ci", "root", "ci_root_ephemeral", [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]); $db->exec("SET GLOBAL log_bin_trust_function_creators = 1"); if ((int) $db->query("SELECT @@GLOBAL.log_bin_trust_function_creators")->fetchColumn() !== 1) { exit(1); } echo "Trigger DDL habilitado apenas no MySQL efêmero.\\n";'
+          php -r '$db = new PDO("mysql:host=127.0.0.1;port=3306;dbname=cutinapp_ci_test", "root", "ci_root_ephemeral", [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]); $db->exec("SET GLOBAL log_bin_trust_function_creators = 1"); if ((int) $db->query("SELECT @@GLOBAL.log_bin_trust_function_creators")->fetchColumn() !== 1) { exit(1); } echo "Trigger DDL habilitado apenas no MySQL efêmero.\\n";'
 
       - name: Migrar, reverter última migration e reaplicar no MySQL de teste
         shell: bash
@@ -290,10 +290,10 @@ jobs:
         run: |
           set -euo pipefail
           sed -e 's/name="DB_CONNECTION" value="sqlite"/name="DB_CONNECTION" value="mysql"/' \
-              -e 's/name="DB_DATABASE" value=":memory:"/name="DB_DATABASE" value="cutinapp_ci"/' \
+              -e 's/name="DB_DATABASE" value=":memory:"/name="DB_DATABASE" value="cutinapp_ci_test"/' \
               phpunit.xml > phpunit.mysql-ci.xml
           grep -q 'name="DB_CONNECTION" value="mysql"' phpunit.mysql-ci.xml
-          grep -q 'name="DB_DATABASE" value="cutinapp_ci"' phpunit.mysql-ci.xml
+          grep -q 'name="DB_DATABASE" value="cutinapp_ci_test"' phpunit.mysql-ci.xml
           cat > tests/Feature/CiMysqlDriverGateTest.php <<'PHP'
           <?php
 
@@ -308,7 +308,7 @@ jobs:
               {
                   $this->assertSame('mysql', config('database.default'));
                   $this->assertSame('mysql', DB::connection()->getDriverName());
-                  $this->assertSame('cutinapp_ci', DB::selectOne('SELECT DATABASE() AS database_name')->database_name);
+                  $this->assertSame('cutinapp_ci_test', DB::selectOne('SELECT DATABASE() AS database_name')->database_name);
               }
           }
           PHP
