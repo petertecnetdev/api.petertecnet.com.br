@@ -624,12 +624,17 @@ class AsaasCommerceWebhookReplayP0Test extends TestCase
             'user_id' => $buyer->id,
             'created_by' => $buyer->id,
             'updated_by' => $buyer->id,
+            'ownership_status' => null, 'listing_source' => 'legacy_organizer',
+            'verification_status' => 'legacy_owner_record',
             'created_at' => now(), 'updated_at' => now(),
         ]);
         $eventId = DB::table('events')->insertGetId([
             'app_id' => $appId, 'app_slug' => 'cutinapp',
             'production_id' => $productionId,
             'title' => 'Evento E2E Asaas',
+            'created_by_user_id' => $buyer->id,
+            'ownership_status' => null, 'listing_source' => 'legacy_organizer',
+            'verification_status' => 'legacy_owner_record',
             'slug' => 'evento-asaas-e2e-p0',
             'start_date' => now()->addDay(),
             'end_date' => now()->addDay()->addHours(4),
