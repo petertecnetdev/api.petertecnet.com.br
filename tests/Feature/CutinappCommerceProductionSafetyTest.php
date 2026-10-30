@@ -877,6 +877,97 @@ class CutinappCommerceProductionSafetyTest extends TestCase
         \Illuminate\Support\Facades\Mail::assertNothingQueued();
     }
 
+    public function test_liquidacao_tardia_com_evento_apenas_informativo_preserva_pagamento_sem_venda(): void
+    {
+        // O evento pode perder a autorização comercial via metadados de curadoria,
+        // sem alterar a origem legada da produção ou a classificação do ingresso.
+        [, $event, $ticket, $productionId] = $this->paidEventFixture('settlement-event-info-only');
+        $buyer = $this->user('Comprador Evento Informativo', 'buyer-event-info@cutinapp.test');
+        $appId = (int) DB::table('applications')->where('slug', 'cutinapp')->value('id');
+        \Illuminate\Support\Facades\Mail::fake();
+
+        $order = \App\Models\CommerceOrder::create([
+            'app_id' => $appId,
+            'public_id' => 'pedido-evento-informativo-w1',
+            'event_id' => $event['id'],
+            'production_id' => $productionId,
+            'user_id' => $buyer->id,
+            'status' => 'pending',
+            'currency' => 'BRL',
+            'subtotal' => 20.00,
+            'platform_fee' => 2.00,
+            'processor_fee' => 0,
+            'discount_amount' => 0,
+            'total' => 20.00,
+            'producer_net' => 18.00,
+            'payment_method' => 'pix',
+            'metadata' => ['settlement_mode' => 'platform_collection'],
+        ]);
+        \App\Models\CommerceOrderItem::create([
+            'app_id' => $appId,
+            'order_id' => $order->id,
+            'type' => 'ticket',
+            'ticket_id' => $ticket['id'],
+            'name' => 'Inteira',
+            'unit_price' => 20.00,
+            'quantity' => 1,
+            'subtotal' => 20.00,
+        ]);
+        $payment = \App\Models\CommercePayment::create([
+            'app_id' => $appId,
+            'order_id' => $order->id,
+            'provider' => 'asaas',
+            'method' => 'pix',
+            'status' => 'pending',
+            'provider_payment_id' => 'pay-event-info-only-w1',
+            'idempotency_key' => 'event-info-only-w1',
+            'amount' => 20.00,
+            'provider_fee' => 0,
+        ]);
+
+        DB::table('events')->where('id', $event['id'])->update([
+            'extra_info' => json_encode([
+                'curation' => ['sale_mode' => 'information_only', 'ticket_checkout_enabled' => false],
+            ], JSON_THROW_ON_ERROR),
+        ]);
+        $this->assertDatabaseHas('establishments', [
+            'id' => $productionId,
+            'listing_source' => 'legacy_organizer',
+        ]);
+        $this->assertDatabaseHas('tickets', [
+            'id' => $ticket['id'],
+            'curatorial_information_only' => false,
+        ]);
+
+        $payload = [
+            'id' => 'pay-event-info-only-w1',
+            'externalReference' => $order->public_id,
+            'value' => 20.00,
+            'status' => 'RECEIVED',
+        ];
+        $service = app(\App\Services\CommercePaymentSettlementService::class);
+        $service->confirm($payment, $payload, 0.25);
+        $firstPaidAt = \App\Models\CommercePayment::findOrFail($payment->id)->paid_at;
+        $service->confirm($payment->fresh(), $payload, 0.25);
+
+        $this->assertNotNull($firstPaidAt);
+        $this->assertEquals($firstPaidAt, \App\Models\CommercePayment::findOrFail($payment->id)->paid_at);
+        $this->assertDatabaseHas('commerce_payments', ['id' => $payment->id, 'status' => 'paid']);
+        $this->assertDatabaseHas('commerce_orders', ['id' => $order->id, 'status' => 'cancelled']);
+        $metadata = \App\Models\CommerceOrder::findOrFail($order->id)->metadata;
+        $this->assertSame('blocked', $metadata['fulfillment_status'] ?? null);
+        $this->assertSame('required', $metadata['financial_reconciliation_status'] ?? null);
+        $this->assertDatabaseCount('event_passes', 0);
+        $this->assertDatabaseCount('ledger_entries', 0);
+        $this->assertDatabaseMissing('interactions', [
+            'entity_type' => 'CommerceOrder',
+            'entity_id' => $order->id,
+            'interaction_type' => 'payment_paid',
+        ]);
+        \Illuminate\Support\Facades\Mail::assertNothingSent();
+        \Illuminate\Support\Facades\Mail::assertNothingQueued();
+    }
+
     private function paidEventFixture(string $suffix): array
     {
         $producer = $this->user('Produtor', "producer-{$suffix}@cutinapp.test");
