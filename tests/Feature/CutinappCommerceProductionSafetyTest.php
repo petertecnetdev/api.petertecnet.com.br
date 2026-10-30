@@ -548,6 +548,43 @@ class CutinappCommerceProductionSafetyTest extends TestCase
         }
     }
 
+    public function test_informational_ticket_cannot_be_sold_even_when_legacy_event_is_verified(): void
+    {
+        config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
+        config()->set('services.finance.payment_primary_provider', 'mercadopago');
+        config()->set('services.mercadopago.access_token', 'test-payment-token');
+
+        // A ficha do evento é legítima; o ingresso é apenas informativo.
+        // Um preço conhecido não pode transformar esse ingresso em venda.
+        [, $event, $ticket] = $this->paidEventFixture('informational-ticket-no-sale');
+        DB::table('tickets')->where('id', $ticket['id'])->update([
+            'curatorial_information_only' => true,
+        ]);
+
+        $this->getJson('/api/cutinapp/events/public/' . $event['slug'] . '/commerce')
+            ->assertOk()
+            ->assertJsonPath('tickets.0.id', $ticket['id'])
+            ->assertJsonPath('tickets.0.informational_only', true)
+            ->assertJsonPath('tickets.0.available', false);
+
+        Http::fake();
+        $buyer = $this->user('Comprador Informativo', 'buyer-informational-no-sale@cutinapp.test');
+        $this->withHeaders($this->headersFor($buyer))
+            ->postJson('/api/cutinapp/checkout', [
+                'event_id' => $event['id'],
+                'tickets' => [['id' => $ticket['id'], 'quantity' => 1]],
+                'payment_method' => 'pix',
+            ])
+            ->assertStatus(403);
+
+        $this->assertDatabaseMissing('commerce_orders', ['event_id' => $event['id']]);
+        $this->assertDatabaseCount('commerce_payments', 0);
+        $this->assertDatabaseCount('inventory_reservations', 0);
+        $this->assertDatabaseCount('ledger_entries', 0);
+        $this->assertDatabaseCount('event_passes', 0);
+        Http::assertNothingSent();
+    }
+
     public function test_curatorial_event_cannot_resume_existing_pending_pix_order_or_issue_pass(): void
     {
         config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
