@@ -2,13 +2,11 @@
 
 namespace App\Domain\Creative\Http\Controllers;
 
-use App\Domain\Creative\Models\CreativePromptTemplate;
 use App\Domain\Creative\Services\CloudflareImageGenerator;
 use App\Domain\Creative\Services\CreativePromptTemplateService;
+use App\Domain\Creative\Services\CreativePromptAuditService;
 use App\Http\Controllers\Controller;
-use App\Models\EcosystemAuditLog;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use RuntimeException;
 
@@ -17,6 +15,7 @@ final class AdminCreativePromptController extends Controller
     public function __construct(
         private readonly CreativePromptTemplateService $templates,
         private readonly CloudflareImageGenerator $generator,
+        private readonly CreativePromptAuditService $auditor,
     ) {}
 
     public function show(string $key)
@@ -40,7 +39,7 @@ final class AdminCreativePromptController extends Controller
         $record = $this->templates->save($key, $data['template'], (int) $request->user()->id);
         $after = $this->templates->definition($key);
 
-        $this->audit($request, 'creative.prompt.updated', $record, $before, $after);
+        $this->auditor->record($request, 'creative.prompt.updated', $record, $before, $after);
 
         return response()->json([
             'message' => 'Prompt da IA atualizado. As próximas imagens já usarão esta versão.',
@@ -56,7 +55,7 @@ final class AdminCreativePromptController extends Controller
         $record = $this->templates->reset($key);
         $after = $this->templates->definition($key);
 
-        $this->audit($request, 'creative.prompt.reset_to_default', $record, $before, $after);
+        $this->auditor->record($request, 'creative.prompt.reset_to_default', $record, $before, $after);
 
         return response()->json([
             'message' => 'Prompt restaurado para o padrão seguro da Peter Tecnet.',
@@ -112,22 +111,4 @@ final class AdminCreativePromptController extends Controller
         ]);
     }
 
-    private function audit(
-        Request $request,
-        string $action,
-        ?CreativePromptTemplate $record,
-        array $before,
-        array $after,
-    ): void {
-        EcosystemAuditLog::create([
-            'user_id' => $request->user()?->id,
-            'action' => $action,
-            'entity_type' => CreativePromptTemplate::class,
-            'entity_id' => $record?->id,
-            'before' => $before,
-            'after' => $after,
-            'ip' => $request->ip(),
-            'user_agent' => Str::limit((string) $request->userAgent(), 1000, ''),
-        ]);
-    }
 }
