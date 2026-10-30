@@ -564,7 +564,7 @@ class AsaasCommerceWebhookReplayP0Test extends TestCase
                 'curation' => ['sale_mode' => 'information_only', 'ticket_checkout_enabled' => false],
             ], JSON_THROW_ON_ERROR),
         ]);
-        DB::table('tickets')->where('id', $item->ticket_id)->update(['informational_only' => true]);
+        DB::table('tickets')->where('id', $item->ticket_id)->update(['curatorial_information_only' => true]);
         Http::fake(fn () => Http::response($this->paidAsaasPayload(), 200));
 
         $service = app(AsaasCommerceWebhookService::class);
@@ -604,7 +604,7 @@ class AsaasCommerceWebhookReplayP0Test extends TestCase
             'verification_status' => 'legacy_owner_record',
             'extra_info' => null,
         ]);
-        DB::table('tickets')->where('id', $item->ticket_id)->update(['informational_only' => false]);
+        DB::table('tickets')->where('id', $item->ticket_id)->update(['curatorial_information_only' => false]);
         $service->process(array_replace($event, ['id' => 'evt-pagamento-curatorial-replay-p0']));
 
         $this->assertDatabaseHas('commerce_orders', ['id' => $order->id, 'status' => 'cancelled']);
@@ -622,7 +622,7 @@ class AsaasCommerceWebhookReplayP0Test extends TestCase
         [$payment, $order, $item] = $this->persistedPaidCheckoutFixture();
         $payment->update(['provider_txid' => null]);
         DB::table('tickets')->where('id', $item->ticket_id)
-            ->update(['informational_only' => true]);
+            ->update(['curatorial_information_only' => true]);
         Http::fake(fn () => Http::response($this->paidAsaasPayload(), 200));
         app(AsaasCommerceWebhookService::class)->process([
             'id' => 'evt-lote-informativo-tardio-p0',
