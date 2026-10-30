@@ -698,6 +698,92 @@ class CutinappCommerceProductionSafetyTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_liquidacao_tardia_informativa_nao_dispara_email_audiencia_nem_ledger_em_replay(): void
+    {
+        // O webhook Asaas tem verificação remota em suíte própria. Aqui o
+        // contrato de liquidação garante que dinheiro recebido não vira venda.
+        [, $event, $ticket, $productionId] = $this->paidEventFixture('settlement-mail-blocked');
+        $buyer = $this->user('Comprador Liquidação Tardia', 'buyer-settlement-mail@cutinapp.test');
+        $appId = (int) DB::table('applications')->where('slug', 'cutinapp')->value('id');
+        \Illuminate\Support\Facades\Mail::fake();
+
+        $order = \App\Models\CommerceOrder::create([
+            'app_id' => $appId,
+            'public_id' => 'pedido-liquidacao-tardia-mail-w1',
+            'event_id' => $event['id'],
+            'production_id' => $productionId,
+            'user_id' => $buyer->id,
+            'status' => 'pending',
+            'currency' => 'BRL',
+            'subtotal' => 20.00,
+            'platform_fee' => 2.00,
+            'processor_fee' => 0,
+            'discount_amount' => 0,
+            'total' => 20.00,
+            'producer_net' => 18.00,
+            'payment_method' => 'pix',
+            'metadata' => ['settlement_mode' => 'platform_collection'],
+        ]);
+        \App\Models\CommerceOrderItem::create([
+            'app_id' => $appId,
+            'order_id' => $order->id,
+            'type' => 'ticket',
+            'ticket_id' => $ticket['id'],
+            'name' => 'Inteira',
+            'unit_price' => 20.00,
+            'quantity' => 1,
+            'subtotal' => 20.00,
+        ]);
+        $payment = \App\Models\CommercePayment::create([
+            'app_id' => $appId,
+            'order_id' => $order->id,
+            'provider' => 'asaas',
+            'method' => 'pix',
+            'status' => 'pending',
+            'provider_payment_id' => 'pay-settlement-mail-w1',
+            'idempotency_key' => 'settlement-mail-w1',
+            'amount' => 20.00,
+            'provider_fee' => 0,
+        ]);
+
+        // Ingresso era comercial quando o Pix foi emitido; depois tornou-se
+        // somente informativo, antes de o provedor confirmar o recebimento.
+        DB::table('tickets')->where('id', $ticket['id'])->update([
+            'curatorial_information_only' => true,
+        ]);
+
+        $service = app(\App\Services\CommercePaymentSettlementService::class);
+        $providerPayload = [
+            'id' => 'pay-settlement-mail-w1',
+            'externalReference' => $order->public_id,
+            'value' => 20.00,
+            'status' => 'RECEIVED',
+        ];
+        $service->confirm($payment, $providerPayload, 0.25);
+        $service->confirm($payment->fresh(), $providerPayload, 0.25);
+
+        $this->assertDatabaseHas('commerce_payments', [
+            'id' => $payment->id,
+            'status' => 'paid',
+        ]);
+        $this->assertDatabaseHas('commerce_orders', [
+            'id' => $order->id,
+            'status' => 'cancelled',
+        ]);
+        $metadata = \App\Models\CommerceOrder::findOrFail($order->id)->metadata;
+        $this->assertSame('blocked', $metadata['fulfillment_status'] ?? null);
+        $this->assertSame('required', $metadata['financial_reconciliation_status'] ?? null);
+        $this->assertDatabaseCount('event_passes', 0);
+        $this->assertDatabaseCount('ledger_entries', 0);
+        $this->assertDatabaseMissing('interactions', [
+            'entity_type' => 'CommerceOrder',
+            'entity_id' => $order->id,
+            'interaction_type' => 'payment_paid',
+        ]);
+        \Illuminate\Support\Facades\Mail::assertNothingSent();
+        \Illuminate\Support\Facades\Mail::assertNothingQueued();
+    }
+
     private function paidEventFixture(string $suffix): array
     {
         $producer = $this->user('Produtor', "producer-{$suffix}@cutinapp.test");
