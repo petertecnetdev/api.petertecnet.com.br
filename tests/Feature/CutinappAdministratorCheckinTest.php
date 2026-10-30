@@ -11,11 +11,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
+use Tests\Concerns\UsesAuthorizedLegacyListingFixture;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
 class CutinappAdministratorCheckinTest extends TestCase
 {
     use RefreshDatabase;
+    use UsesAuthorizedLegacyListingFixture;
 
     public function test_root_and_cutinapp_delegated_admin_can_validate_tickets_for_other_producers(): void
     {
@@ -28,6 +30,8 @@ class CutinappAdministratorCheckinTest extends TestCase
         $production = $this->production($producer);
         [$firstEvent, $firstTicket] = $this->publishedEvent($producer, $production['id'], 'Evento de outro produtor A');
         [$secondEvent, $secondTicket] = $this->publishedEvent($producer, $production['id'], 'Evento de outro produtor B');
+        $this->authorizeLegacyListingFixture((int) $firstEvent['id'], (int) $producer->id);
+        $this->authorizeLegacyListingFixture((int) $secondEvent['id'], (int) $producer->id);
 
         $passA = $this->withHeaders($this->headersFor($participant))
             ->postJson('/api/cutinapp/passes/claim/'.$firstTicket['id'])
