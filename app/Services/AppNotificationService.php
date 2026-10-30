@@ -121,13 +121,13 @@ class AppNotificationService
             return true;
         }
 
-        $identity = Str::lower(implode(' ', array_filter([
-            $application->name,
-            $application->slug,
-            $application->url,
-        ])));
-
-        return Str::contains($identity, ['cutinapp', 'cutin', 'chatnap', 'catchnap']);
+        // Per-application operational setting overrides the default event-app
+        // notification policy without matching brand names or subdomains.
+        return (bool) data_get(
+            $application->runtime_settings,
+            'notifications.email_enabled',
+            (string) $application->slug === (string) config('curation.application_slug')
+        );
     }
 
     private function resolveActionUrl(AppNotification $notification, Application $application): string
@@ -135,7 +135,7 @@ class AppNotificationService
         $baseUrl = rtrim(trim((string) $application->url), '/');
 
         if (! filter_var($baseUrl, FILTER_VALIDATE_URL)) {
-            $baseUrl = 'https://cutinapp.petertecnet.com.br';
+            $baseUrl = rtrim((string) config('app.url'), '/');
         }
 
         $data = is_array($notification->data) ? $notification->data : [];
