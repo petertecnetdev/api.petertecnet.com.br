@@ -14,11 +14,11 @@ final class CuratorialTicketSynchronizer
      */
     public function sync(bool $apply = false): array
     {
-        $appId = DB::table('applications')->where('slug', 'cutinapp')->value('id');
-        $ownerEmail = config('curation.owner_email', 'cutinapp@gmail.com');
+        $appId = DB::table('applications')->where('slug', (string) config('curation.application_slug'))->value('id');
+        $ownerEmail = config('curation.owner_email');
         $ownerId = DB::table('users')->where('email', $ownerEmail)->value('id');
         if (! $appId || ! $ownerId) {
-            throw new RuntimeException('Aplicacao Cutinapp ou responsavel pela curadoria inexistente.');
+            throw new RuntimeException('Aplicacao ou responsavel pela curadoria inexistente.');
         }
 
         $hasNativeCuratorialFlag = Schema::hasColumn('tickets', 'curatorial_information_only');
@@ -103,7 +103,7 @@ final class CuratorialTicketSynchronizer
 
                     $payload = [
                         'app_id' => $event->app_id,
-                        'app_slug' => $event->app_slug ?: 'cutinapp',
+                        'app_slug' => $event->app_slug ?: (string) config('curation.application_slug'),
                         'event_id' => $event->id,
                         'name' => $option['name'],
                         'ticket_type' => $option['price'] === 0.0 ? 'courtesy' : 'standard',
