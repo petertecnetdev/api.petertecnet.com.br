@@ -634,6 +634,16 @@ class AsaasCommerceWebhookReplayP0Test extends TestCase
         $this->assertDatabaseHas('commerce_payments', ['id' => $payment->id, 'status' => 'paid']);
         $this->assertDatabaseCount('event_passes', 0);
         $this->assertDatabaseCount('ledger_entries', 0);
+
+        // O gateway pode devolver esse pagamento. Como não houve venda
+        // comercial, o reembolso também não pode gerar reversão de ledger.
+        app(\App\Services\CommercePaymentSettlementService::class)->reverse(
+            $payment->fresh(), 'refunded', ['status' => 'REFUNDED']
+        );
+        $this->assertDatabaseHas('commerce_payments', ['id' => $payment->id, 'status' => 'refunded']);
+        $this->assertDatabaseHas('commerce_orders', ['id' => $order->id, 'status' => 'refunded']);
+        $this->assertDatabaseCount('event_passes', 0);
+        $this->assertDatabaseCount('ledger_entries', 0);
     }
 
     public function test_payment_received_pix_get_divergente_nao_liquida_nem_reprocessa_recibo_pendente(): void
