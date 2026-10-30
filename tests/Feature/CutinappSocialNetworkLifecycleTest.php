@@ -92,7 +92,11 @@ class CutinappSocialNetworkLifecycleTest extends TestCase
 
         $feed = $this->withHeaders($uh)->getJson('/api/cutinapp/feed')->assertOk();
         $this->assertSame($event['id'], $feed->json('feed.data.0.id'));
-        $this->assertSame($postId, $feed->json('community_activity.0.id'));
+        // A atividade é ordenada por instante e pode conter novas publicações
+        // com timestamp igual: validar a presença, não uma posição instável.
+        $activityIds = collect($feed->json('community_activity', []))
+            ->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $this->assertContains((int) $postId, $activityIds);
 
         $this->withHeaders($uh)->getJson('/api/cutinapp/profile/overview')
             ->assertOk()
