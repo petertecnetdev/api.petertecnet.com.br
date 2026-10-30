@@ -796,7 +796,7 @@ class CutinappCommerceProductionSafetyTest extends TestCase
 
         $order = \App\Models\CommerceOrder::create([
             'app_id' => $appId,
-            'public_id' => 'pedido-liquidacao-producao-curatorial-w1',
+            'public_id' => 'pedido-producao-curatorial-w1',
             'event_id' => $event['id'],
             'production_id' => $productionId,
             'user_id' => $buyer->id,
