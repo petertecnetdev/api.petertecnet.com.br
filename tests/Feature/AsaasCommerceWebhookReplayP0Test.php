@@ -357,7 +357,7 @@ class AsaasCommerceWebhookReplayP0Test extends TestCase
 
     private function verifyCheckoutPaid(CommercePayment $payment, CommerceOrder $order, array $checkout): array
     {
-        $method = new \\ReflectionMethod(AsaasCommerceWebhookService::class, 'verifiedPaidCheckoutPayload');
+        $method = new \ReflectionMethod(AsaasCommerceWebhookService::class, 'verifiedPaidCheckoutPayload');
 
         return $method->invoke(app(AsaasCommerceWebhookService::class), $payment, $order, $checkout);
     }
