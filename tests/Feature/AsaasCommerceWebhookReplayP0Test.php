@@ -438,6 +438,95 @@ class AsaasCommerceWebhookReplayP0Test extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_payment_received_pix_sem_checkout_liquida_uma_vez_com_get_remoto_e_replay(): void
+    {
+        config()->set('services.asaas.api_key', 'chave-falsa-de-teste');
+        \Illuminate\Support\Facades\Mail::fake();
+        [$payment, $order, $item] = $this->persistedPaidCheckoutFixture();
+        $payment->update(['provider_txid' => null]);
+        Http::fake(fn () => Http::response($this->paidAsaasPayload(), 200));
+
+        $service = app(AsaasCommerceWebhookService::class);
+        $event = [
+            'id' => 'evt-payment-pix-integrado-p0',
+            'event' => 'PAYMENT_RECEIVED',
+            'payment' => $this->paidAsaasPayload(),
+        ];
+        $service->process($event);
+
+        $this->assertDatabaseHas('commerce_orders', ['id' => $order->id, 'status' => 'paid']);
+        $this->assertDatabaseHas('commerce_payments', [
+            'id' => $payment->id, 'status' => 'paid', 'provider_txid' => null,
+        ]);
+        $this->assertSame(1, DB::table('event_passes')
+            ->where('commerce_order_item_id', $item->id)->where('status', 'issued')->count());
+        $token = (string) DB::table('event_passes')
+            ->where('commerce_order_item_id', $item->id)->value('token');
+        $this->assertTrue(str_starts_with($token, 'PASS-'));
+        $this->assertEqualsCanonicalizing(
+            ['gross_sale', 'platform_fee', 'producer_credit'],
+            DB::table('ledger_entries')->where('payment_id', $payment->id)->pluck('type')->all()
+        );
+
+        // Reentrega com o mesmo ID e nova notificação do mesmo pagamento:
+        // sem checkout, não podem duplicar liquidação nem QR.
+        $service->process($event);
+        $service->process(array_replace($event, ['id' => 'evt-payment-pix-replay-p0']));
+
+        $this->assertSame(1, DB::table('event_passes')
+            ->where('commerce_order_item_id', $item->id)->count());
+        $this->assertSame($token, (string) DB::table('event_passes')
+            ->where('commerce_order_item_id', $item->id)->value('token'));
+        $this->assertSame(3, DB::table('ledger_entries')->where('payment_id', $payment->id)->count());
+        $this->assertSame(2, DB::table('financial_webhook_events')
+            ->where('provider', 'asaas')->whereNotNull('processed_at')->count());
+        Http::assertSentCount(2);
+        Http::assertSent(fn ($request) => $request->method() === 'GET'
+            && str_ends_with($request->url(), '/payments/pay-asaas-p0'));
+        Http::assertNotSent(fn ($request) => $request->method() === 'POST');
+    }
+
+    public function test_payment_received_pix_get_divergente_nao_liquida_nem_reprocessa_recibo_pendente(): void
+    {
+        config()->set('services.asaas.api_key', 'chave-falsa-de-teste');
+        \Illuminate\Support\Facades\Mail::fake();
+        [$payment, $order] = $this->persistedPaidCheckoutFixture();
+        $payment->update(['provider_txid' => null]);
+        $remote = array_replace($this->paidAsaasPayload(), [
+            'externalReference' => 'pedido-de-outra-aplicacao',
+        ]);
+        Http::fake(function () use (&$remote) {
+            return Http::response($remote, 200);
+        });
+
+        $service = app(AsaasCommerceWebhookService::class);
+        $event = [
+            'id' => 'evt-payment-pix-remoto-divergente-p0',
+            'event' => 'PAYMENT_RECEIVED',
+            'payment' => $this->paidAsaasPayload(),
+        ];
+        $this->assertRejected(fn () => $service->process($event));
+
+        $this->assertDatabaseHas('commerce_orders', ['id' => $order->id, 'status' => 'pending']);
+        $this->assertDatabaseHas('commerce_payments', ['id' => $payment->id, 'status' => 'pending']);
+        $this->assertDatabaseCount('ledger_entries', 0);
+        $this->assertDatabaseCount('event_passes', 0);
+        $this->assertDatabaseHas('financial_webhook_events', [
+            'provider' => 'asaas', 'event_id' => $event['id'], 'processed_at' => null,
+        ]);
+        Http::assertSentCount(1);
+
+        // Corrigir o mock remoto não autoriza reprocessar um recibo pendente.
+        $remote = $this->paidAsaasPayload();
+        $service->process($event);
+        Http::assertSentCount(1);
+        $this->assertDatabaseCount('ledger_entries', 0);
+        $this->assertDatabaseCount('event_passes', 0);
+        $this->assertDatabaseHas('financial_webhook_events', [
+            'provider' => 'asaas', 'event_id' => $event['id'], 'processed_at' => null,
+        ]);
+    }
+
     /**
      * Fixture persistida exclusivamente para testar liquidação de pedido já
      * existente. Não concede proveniência comercial nem altera a policy.
