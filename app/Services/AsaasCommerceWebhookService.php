@@ -185,6 +185,65 @@ final class AsaasCommerceWebhookService
         return (int) round((float) $value * 100);
     }
 
+    /**
+     * CHECKOUT_PAID é apenas um aviso. A liquidação exige vínculo local
+     * explícito checkout -> pagamento -> pedido/app e GET da cobrança paga.
+     * Cobranças Asaas normais sem provider_txid continuam pelo PAYMENT_*;
+     * nunca associar um checkout pelo último pagamento ou só pela referência.
+     */
+    private function verifiedPaidCheckoutPayload(
+        CommercePayment $payment,
+        CommerceOrder $order,
+        array $checkout,
+    ): array {
+        $checkoutId = $checkout['id'] ?? null;
+        $reference = $checkout['externalReference'] ?? null;
+        $status = $checkout['status'] ?? null;
+        $paymentId = $payment->provider_payment_id;
+        $items = $checkout['items'] ?? null;
+
+        if ($payment->provider !== 'asaas'
+            || (int) $payment->app_id <= 0 || (int) $payment->order_id <= 0
+            || (int) $order->app_id !== (int) $payment->app_id
+            || (int) $order->id !== (int) $payment->order_id
+            || ! is_string($checkoutId) || trim($checkoutId) === ''
+            || ! is_string($payment->provider_txid) || trim($payment->provider_txid) === ''
+            || trim($checkoutId) !== trim($payment->provider_txid)
+            || ! is_string($paymentId) || trim($paymentId) === ''
+            || ! is_string($reference) || trim($reference) === ''
+            || trim($reference) !== (string) $order->public_id
+            || ! is_string($status) || strtoupper(trim($status)) !== 'PAID'
+            || ! is_array($items) || $items === []) {
+            throw new RuntimeException('Checkout Asaas sem identidade comercial comprovada.');
+        }
+
+        $checkoutCents = 0;
+        foreach ($items as $item) {
+            $quantity = is_array($item) ? ($item['quantity'] ?? null) : null;
+            $unitCents = is_array($item) ? $this->positiveCents($item['value'] ?? null) : null;
+            if (! is_int($quantity) || $quantity <= 0 || $unitCents === null) {
+                throw new RuntimeException('Itens do checkout Asaas incompletos ou inválidos.');
+            }
+
+            $checkoutCents += $unitCents * $quantity;
+            if ($checkoutCents > 10000000000) {
+                throw new RuntimeException('Valor do checkout Asaas fora do limite.');
+            }
+        }
+
+        $orderCents = $this->positiveCents($order->total);
+        $paymentCents = $this->positiveCents($payment->amount);
+        if ($orderCents === null || $paymentCents === null
+            || $checkoutCents !== $orderCents || $checkoutCents !== $paymentCents) {
+            throw new RuntimeException('Valor do checkout Asaas divergente do pedido.');
+        }
+
+        $remote = $this->asaas->getPayment(trim($paymentId));
+        $this->assertPaidPaymentIdentity($payment, $order, $remote);
+
+        return $remote;
+    }
+
     private function processCheckoutEvent(string $eventId, string $eventType, array $payload): void
     {
         $checkout = is_array($payload['checkout'] ?? null) ? $payload['checkout'] : [];
@@ -210,15 +269,16 @@ final class AsaasCommerceWebhookService
             return;
         }
 
+        // Não consultar sem ID, nem usar fallback por referência ou último
+        // pagamento: um checkout sem vínculo não pode alterar outro pedido.
+        if ($checkoutId === '') {
+            throw new RuntimeException('Identificador do checkout Asaas ausente.');
+        }
+
         $payment = CommercePayment::query()
             ->where('provider', 'asaas')
-            ->when($checkoutId !== '', fn ($query) => $query->where('provider_txid', $checkoutId))
-            ->latest('id')
+            ->where('provider_txid', $checkoutId)
             ->first();
-
-        if (! $payment && $externalReference !== '') {
-            $payment = $this->findPayment('', $externalReference);
-        }
 
         if (! $payment) {
             $this->finishReceipt($eventId);
@@ -226,12 +286,17 @@ final class AsaasCommerceWebhookService
         }
 
         if ($eventType === 'CHECKOUT_PAID') {
-            $this->settlement->confirm($payment, [
-                'id' => $checkoutId,
-                'value' => round($value, 2),
-                'externalReference' => $externalReference,
-                'status' => $checkout['status'] ?? 'PAID',
-            ]);
+            $order = CommerceOrder::query()
+                ->where('app_id', $payment->app_id)
+                ->find($payment->order_id);
+            if (! $order) {
+                throw new RuntimeException('Pedido do checkout Asaas não encontrado na aplicação.');
+            }
+
+            // Somente a cobrança paga confirmada no GET remoto pode liquidar.
+            // Falha/timeout mantém recibo pendente, sem ledger ou EventPass.
+            $remote = $this->verifiedPaidCheckoutPayload($payment, $order, $checkout);
+            $this->applyRemoteState($payment, $remote, $eventType);
         } elseif (in_array($eventType, ['CHECKOUT_CANCELED', 'CHECKOUT_EXPIRED'], true)) {
             $this->settlement->markFailed(
                 $payment,
