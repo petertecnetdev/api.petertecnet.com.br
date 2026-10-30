@@ -5,6 +5,10 @@ namespace App\Services;
 use App\Models\CommerceOrder;
 use App\Models\CommercePayment;
 use App\Models\EventPass;
+use App\Models\Event;
+use App\Models\Production;
+use App\Models\Ticket;
+use App\Services\Independence\ListingCommercePolicy;
 use App\Models\Interaction;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -13,7 +17,10 @@ use Throwable;
 
 final class CommercePaymentSettlementService
 {
-    public function __construct(private readonly EventAudienceService $audience) {}
+    public function __construct(
+        private readonly EventAudienceService $audience,
+        private readonly ListingCommercePolicy $commercePolicy,
+    ) {}
 
     public function confirm(
         CommercePayment $payment,
@@ -34,8 +41,12 @@ final class CommercePaymentSettlementService
                 ->lockForUpdate()
                 ->findOrFail($lockedPayment->order_id);
 
-            if ($lockedPayment->status === 'paid' && $order->status === 'paid') {
-                $approvedOrderId = (int) $order->id;
+            if ($lockedPayment->status === 'paid') {
+                // A cobrança pode estar paga no provedor, mas com entrega
+                // bloqueada para conciliação. Replays nunca ressuscitam o QR.
+                if ($order->status === 'paid') {
+                    $approvedOrderId = (int) $order->id;
+                }
                 return;
             }
 
@@ -47,6 +58,15 @@ final class CommercePaymentSettlementService
             $externalReference = trim((string) ($providerPayload['externalReference'] ?? $providerPayload['external_reference'] ?? ''));
             if ($externalReference !== '' && $externalReference !== (string) $order->public_id) {
                 throw new RuntimeException('A referência externa do pagamento é inválida.');
+            }
+
+            // O checkout foi autorizado no passado, mas um webhook pode chegar
+            // após revogação de titularidade, bloqueio curatorial ou alteração
+            // do lote. Revalidar ANTES de emitir, lançar ledger ou notificar.
+            // Os locks usam o mesmo ciclo da classificação/revogação no MySQL.
+            if (! $this->canFulfillTicketOrder($order)) {
+                $this->recordUnfulfillableProviderPayment($lockedPayment, $order, $providerPayload, $providerFee);
+                return;
             }
 
             foreach ($order->items->where('type', 'ticket') as $line) {
@@ -158,6 +178,111 @@ final class CommercePaymentSettlementService
             ->where('app_id', $payment->app_id)
             ->with(['items', 'event', 'payments'])
             ->findOrFail($payment->order_id);
+    }
+
+    /**
+     * This check runs under the locked payment/order transaction. A legitimate
+     * historic organizer record or two separately approved entities are valid;
+     * source-curated, informational and revoked listings are never fulfillable.
+     */
+    private function canFulfillTicketOrder(CommerceOrder $order): bool
+    {
+        $ticketLines = $order->items->where('type', 'ticket');
+        if ($ticketLines->isEmpty()) {
+            return true;
+        }
+
+        $appId = (int) $order->app_id;
+        $event = Event::query()->where('app_id', $appId)
+            ->lockForUpdate()->find($order->event_id);
+        $production = Production::query()->where('app_id', $appId)
+            ->lockForUpdate()->find($order->production_id);
+
+        if (! $event || ! $production
+            || (int) $event->production_id !== (int) $production->id
+            || ! $event->is_published || $event->is_cancelled
+            || (bool) $event->is_private) {
+            return false;
+        }
+
+        $event->setRelation('production', $production);
+
+        // Freeze approved ownership grants while the payment is being settled.
+        // This prevents a concurrent revocation from racing the policy check.
+        if ($event->verification_status === 'manual_approved'
+            || $production->verification_status === 'manual_approved') {
+            DB::table('independence_entity_grants')
+                ->where('app_id', $appId)
+                ->whereNull('revoked_at')
+                ->where(function ($query) use ($event, $production) {
+                    $query->where(fn ($nested) => $nested
+                        ->where('entity_type', 'event')->where('entity_id', $event->id))
+                        ->orWhere(fn ($nested) => $nested
+                            ->where('entity_type', 'production')->where('entity_id', $production->id));
+                })
+                ->lockForUpdate()->get(['id']);
+        }
+
+        if (! $this->commercePolicy->allowsLegacyOrVerified($event)) {
+            return false;
+        }
+
+        foreach ($ticketLines as $line) {
+            if ((int) $line->app_id !== $appId || (int) $line->ticket_id < 1) {
+                return false;
+            }
+
+            $ticket = Ticket::query()->where('app_id', $appId)
+                ->where('event_id', $event->id)
+                ->lockForUpdate()->find($line->ticket_id);
+
+            if (! $ticket || (bool) $ticket->informational_only) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Preserve the independent provider-paid fact without representing an
+     * unauthorized ticket as sold. The webhook receipt can be completed and
+     * finance can reconcile/refund manually without duplicate passes or sales.
+     */
+    private function recordUnfulfillableProviderPayment(
+        CommercePayment $payment,
+        CommerceOrder $order,
+        array $payload,
+        ?float $providerFee,
+    ): void {
+        $now = now();
+        $fee = round(max(0, $providerFee ?? (float) $payment->provider_fee), 2);
+        $payment->update([
+            'status' => 'paid',
+            'provider_fee' => $fee,
+            'provider_payload' => $payload ?: $payment->provider_payload,
+            'paid_at' => $payment->paid_at ?: $now,
+            'failed_at' => null,
+        ]);
+
+        $metadata = $order->metadata ?? [];
+        $metadata['fulfillment_status'] = 'blocked';
+        $metadata['fulfillment_error_code'] = 'listing_no_longer_sellable';
+        $metadata['fulfillment_last_attempt_at'] = $now->toIso8601String();
+        $metadata['financial_reconciliation_status'] = 'required';
+        $metadata['provider_payment_received_at'] = $now->toIso8601String();
+        $order->update([
+            'status' => 'cancelled',
+            'cancelled_at' => $order->cancelled_at ?: $now,
+            'processor_fee' => $fee,
+            'metadata' => $metadata,
+        ]);
+
+        DB::table('inventory_reservations')
+            ->where('app_id', $order->app_id)
+            ->where('order_id', $order->id)
+            ->whereNull('released_at')
+            ->update(['released_at' => $now, 'updated_at' => $now]);
     }
 
     public function markFailed(CommercePayment $payment, string $status = 'failed', array $providerPayload = []): CommerceOrder
