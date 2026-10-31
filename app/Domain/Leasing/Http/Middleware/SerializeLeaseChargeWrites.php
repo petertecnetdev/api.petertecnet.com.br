@@ -26,7 +26,9 @@ final class SerializeLeaseChargeWrites
                 ->where('id', $leaseId)
                 ->whereNull('deleted_at')
                 ->lockForUpdate()
-                ->firstOrFail();
+                ->first();
+
+            abort_unless($lease, 404);
 
             return $next($request);
         }, 3);
