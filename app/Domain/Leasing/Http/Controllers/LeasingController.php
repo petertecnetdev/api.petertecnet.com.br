@@ -249,7 +249,7 @@ final class LeasingController extends Controller
                 DB::table('leases')->where('app_id', $this->context->id())->where('id', $leaseId)->update(['status' => 'active', 'activated_at' => now(), 'updated_at' => now()]);
                 DB::table('properties')->where('app_id', $this->context->id())->where('id', $lease->property_id)->update(['status' => 'occupied', 'updated_at' => now()]);
             });
-            $this->rentSchedule->ensureForLease($this->context->id(), $leaseId)
+            $this->rentSchedule->ensureForLease($this->context->id(), $leaseId);
         }
         return response()->json($this->leasePayload($request, $leaseId));
     }
@@ -319,7 +319,7 @@ final class LeasingController extends Controller
     public function generateRentSchedule(Request $request, int $leaseId)
     {
         $this->assertLeaseManager($request, $leaseId);
-        $created = $this->rentSchedule->ensureForLease($this->context->id(), $leaseId)
+        $created = $this->rentSchedule->ensureForLease($this->context->id(), $leaseId);
         return response()->json(['created' => $created, 'charges' => DB::table('lease_charges')->where('app_id', $this->context->id())->where('lease_id', $leaseId)->orderBy('due_date')->get()]);
     }
 
