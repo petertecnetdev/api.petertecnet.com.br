@@ -5,11 +5,11 @@ namespace Tests\Feature\Leasing;
 use App\Domain\Leasing\Http\Middleware\SerializeLeaseChargeWrites;
 use App\Models\Application;
 use App\Support\ApplicationContext;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Route;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -155,7 +155,7 @@ final class LeaseRentScheduleIntegrityTest extends TestCase
                 return response()->json(['ok' => true]);
             });
             self::fail('A aplicação não deveria acessar uma locação pertencente a outro app_id.');
-        } catch (ModelNotFoundException) {
+        } catch (NotFoundHttpException) {
             self::assertFalse($called);
         }
     }
