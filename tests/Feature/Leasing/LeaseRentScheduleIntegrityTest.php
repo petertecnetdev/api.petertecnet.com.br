@@ -5,6 +5,7 @@ namespace Tests\Feature\Leasing;
 use App\Domain\Leasing\Http\Middleware\SerializeLeaseChargeWrites;
 use App\Models\Application;
 use App\Support\ApplicationContext;
+use App\Domain\Leasing\Services\LeaseRentScheduleService;
 use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
@@ -167,6 +168,47 @@ final class LeaseRentScheduleIntegrityTest extends TestCase
         } catch (NotFoundHttpException) {
             self::assertFalse($called);
         }
+    }
+
+    public function test_rent_schedule_service_uses_lease_start_for_first_due_date_and_is_repeatable(): void
+    {
+        $this->runIntegrityMigration();
+
+        $leaseId = DB::table('leases')->insertGetId([
+            'app_id' => 10,
+            'starts_on' => '2026-01-15',
+            'ends_on' => '2026-03-31',
+            'due_day' => 10,
+            'rent_amount' => 1500,
+            'deposit_amount' => 500,
+        ]);
+
+        $application = new Application();
+        $application->setAttribute('id', 10);
+        $context = new ApplicationContext();
+        $context->set($application);
+        $service = new LeaseRentScheduleService($context);
+
+        self::assertSame(4, $service->ensureForLease($leaseId));
+        $rentCharges = DB::table('lease_charges')
+            ->where('app_id', 10)
+            ->where('lease_id', $leaseId)
+            ->where('type', 'rent')
+            ->orderBy('reference_date')
+            ->get();
+
+        self::assertSame(['2026-01-15', '2026-02-10', '2026-03-10'], $rentCharges->pluck('due_date')->all());
+        self::assertSame(['2026-01-01', '2026-02-01', '2026-03-01'], $rentCharges->pluck('rent_schedule_month')->all());
+        self::assertSame(0, $service->ensureForLease($leaseId));
+        self::assertSame(4, DB::table('lease_charges')->count());
+    }
+
+    public function test_first_rent_reference_month_is_derived_from_due_date(): void
+    {
+        self::assertSame(
+            '2026-11-01',
+            LeaseRentScheduleService::referenceMonthForDueDate('2026-11-15')
+        );
     }
 
     private function runIntegrityMigration(): void
