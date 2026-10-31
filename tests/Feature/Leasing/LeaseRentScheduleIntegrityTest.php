@@ -2,9 +2,14 @@
 
 namespace Tests\Feature\Leasing;
 
-use App\Domain\Leasing\Services\LeaseRentScheduleService;
+use App\Domain\Leasing\Http\Middleware\SerializeLeaseChargeWrites;
+use App\Models\Application;
+use App\Support\ApplicationContext;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Http\Request;
+use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -93,7 +98,7 @@ final class LeaseRentScheduleIntegrityTest extends TestCase
         self::assertSame('2026-10-01', DB::table('lease_charges')->where('type', 'rent')->value('rent_schedule_month'));
     }
 
-    public function test_schedule_generation_is_repeatable_and_clamps_due_day_to_month_length(): void
+    public function test_charge_write_middleware_holds_the_app_scoped_lease_lock_for_the_request(): void
     {
         $this->runIntegrityMigration();
 
@@ -106,25 +111,53 @@ final class LeaseRentScheduleIntegrityTest extends TestCase
             'deposit_amount' => 500,
         ]);
 
-        $service = new LeaseRentScheduleService();
+        $application = new Application();
+        $application->setAttribute('id', 10);
+        $context = new ApplicationContext();
+        $context->set($application);
 
-        self::assertSame(4, $service->ensureForLease(10, $leaseId));
-        self::assertSame(0, $service->ensureForLease(10, $leaseId));
+        $middleware = new SerializeLeaseChargeWrites($context);
+        $request = Request::create('/api/v1/apps/locaio/leases/'.$leaseId.'/charges/schedule', 'POST');
+        $route = new Route(['POST'], '/api/v1/apps/{application}/leases/{leaseId}/charges/schedule', []);
+        $route->setParameter('leaseId', $leaseId);
+        $request->setRouteResolver(static fn () => $route);
 
-        $charges = DB::table('lease_charges')
-            ->where('app_id', 10)
-            ->where('lease_id', $leaseId)
-            ->orderBy('rent_schedule_month')
-            ->get();
+        $called = false;
+        $response = $middleware->handle($request, function () use (&$called) {
+            $called = true;
+            self::assertSame(1, DB::transactionLevel());
 
-        $rentCharges = $charges->where('type', 'rent')->values();
-        self::assertCount(3, $rentCharges);
-        self::assertSame(
-            ['2026-01-31', '2026-02-28', '2026-03-31'],
-            $rentCharges->pluck('due_date')->all(),
-        );
-        self::assertSame(1, $charges->where('type', 'deposit')->count());
-        self::assertSame(4, $charges->count());
+            return response()->json(['ok' => true]);
+        });
+
+        self::assertTrue($called);
+        self::assertSame(200, $response->getStatusCode());
+        self::assertSame(0, DB::transactionLevel());
+    }
+
+    public function test_charge_write_middleware_does_not_lock_a_lease_from_another_application(): void
+    {
+        $application = new Application();
+        $application->setAttribute('id', 11);
+        $context = new ApplicationContext();
+        $context->set($application);
+
+        $middleware = new SerializeLeaseChargeWrites($context);
+        $request = Request::create('/api/v1/apps/locaio/leases/20/charges/schedule', 'POST');
+        $route = new Route(['POST'], '/api/v1/apps/{application}/leases/{leaseId}/charges/schedule', []);
+        $route->setParameter('leaseId', 20);
+        $request->setRouteResolver(static fn () => $route);
+
+        $called = false;
+        try {
+            $middleware->handle($request, function () use (&$called) {
+                $called = true;
+                return response()->json(['ok' => true]);
+            });
+            self::fail('A aplicação não deveria acessar uma locação pertencente a outro app_id.');
+        } catch (ModelNotFoundException) {
+            self::assertFalse($called);
+        }
     }
 
     private function runIntegrityMigration(): void

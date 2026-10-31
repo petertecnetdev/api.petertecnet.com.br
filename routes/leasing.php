@@ -14,6 +14,7 @@ use App\Domain\Leasing\Http\Controllers\LeasingController;
 use App\Domain\Leasing\Http\Controllers\PropertyWorkspaceController;
 use App\Domain\Leasing\Http\Middleware\PreventLeaseOverlap;
 use App\Domain\Leasing\Http\Middleware\ProtectPropertyLeaseState;
+use App\Domain\Leasing\Http\Middleware\SerializeLeaseChargeWrites;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1/apps/{application}')
@@ -65,7 +66,7 @@ Route::prefix('v1/apps/{application}')
         Route::post('/leases/{leaseId}/contract/sign', [LeaseDocumentWorkflowController::class, 'sign'])->whereNumber('leaseId')->middleware('throttle:20,1');
         Route::get('/leases/{leaseId}/contract/timeline', [LeaseDocumentWorkflowController::class, 'timeline'])->whereNumber('leaseId');
         Route::post('/leases/{leaseId}/contract/amendments', [LeaseDocumentWorkflowController::class, 'storeAmendment'])->whereNumber('leaseId');
-        Route::post('/leases/{leaseId}/payments/request', [LeasePaymentWorkflowController::class, 'requestInitialPayment'])->whereNumber('leaseId')->middleware('throttle:10,1');
+        Route::post('/leases/{leaseId}/payments/request', [LeasePaymentWorkflowController::class, 'requestInitialPayment'])->whereNumber('leaseId')->middleware(['throttle:10,1', SerializeLeaseChargeWrites::class]);
         Route::post('/leases/{leaseId}/activate', [LeaseOnboardingController::class, 'activateIfReady'])->whereNumber('leaseId');
 
         Route::get('/leases/{leaseId}/timeline', [LeaseOperationsController::class, 'timeline'])->whereNumber('leaseId');
@@ -91,8 +92,8 @@ Route::prefix('v1/apps/{application}')
         Route::delete('/leases/{leaseId}/documents/{documentId}', [LeasingController::class, 'deleteDocument'])->whereNumber('leaseId')->whereNumber('documentId');
 
         Route::get('/leases/{leaseId}/charges', [LeasingController::class, 'charges'])->whereNumber('leaseId');
-        Route::post('/leases/{leaseId}/charges', [LeasingController::class, 'storeCharge'])->whereNumber('leaseId');
-        Route::post('/leases/{leaseId}/charges/schedule', [LeasingController::class, 'generateRentSchedule'])->whereNumber('leaseId');
+        Route::post('/leases/{leaseId}/charges', [LeasingController::class, 'storeCharge'])->whereNumber('leaseId')->middleware(SerializeLeaseChargeWrites::class);
+        Route::post('/leases/{leaseId}/charges/schedule', [LeasingController::class, 'generateRentSchedule'])->whereNumber('leaseId')->middleware(SerializeLeaseChargeWrites::class);
         Route::post('/leases/{leaseId}/charges/{chargeId}/payment', [LeasePixPaymentController::class, 'prepare'])->whereNumber('leaseId')->whereNumber('chargeId')->middleware('throttle:20,1');
         Route::patch('/leases/{leaseId}/charges/{chargeId}/paid', [LeaseChargeLifecycleController::class, 'markPaid'])->whereNumber('leaseId')->whereNumber('chargeId');
     });

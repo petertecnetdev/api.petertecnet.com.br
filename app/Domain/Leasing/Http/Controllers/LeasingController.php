@@ -2,9 +2,9 @@
 
 namespace App\Domain\Leasing\Http\Controllers;
 
-use App\Domain\Leasing\Services\LeaseRentScheduleService;
 use App\Http\Controllers\Controller;
 use App\Support\ApplicationContext;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -14,10 +14,7 @@ use Throwable;
 
 final class LeasingController extends Controller
 {
-    public function __construct(
-        private readonly ApplicationContext $context,
-        private readonly LeaseRentScheduleService $rentSchedule,
-    ) {}
+    public function __construct(private readonly ApplicationContext $context) {}
 
     public function dashboard(Request $request)
     {
@@ -249,7 +246,7 @@ final class LeasingController extends Controller
                 DB::table('leases')->where('app_id', $this->context->id())->where('id', $leaseId)->update(['status' => 'active', 'activated_at' => now(), 'updated_at' => now()]);
                 DB::table('properties')->where('app_id', $this->context->id())->where('id', $lease->property_id)->update(['status' => 'occupied', 'updated_at' => now()]);
             });
-            $this->rentSchedule->ensureForLease($this->context->id(), $leaseId);
+            $this->ensureRentSchedule($leaseId);
         }
         return response()->json($this->leasePayload($request, $leaseId));
     }
@@ -319,7 +316,7 @@ final class LeasingController extends Controller
     public function generateRentSchedule(Request $request, int $leaseId)
     {
         $this->assertLeaseManager($request, $leaseId);
-        $created = $this->rentSchedule->ensureForLease($this->context->id(), $leaseId);
+        $created = $this->ensureRentSchedule($leaseId);
         return response()->json(['created' => $created, 'charges' => DB::table('lease_charges')->where('app_id', $this->context->id())->where('lease_id', $leaseId)->orderBy('due_date')->get()]);
     }
 
@@ -448,6 +445,30 @@ final class LeasingController extends Controller
     private function json(mixed $value): ?string
     {
         return $value === null ? null : json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    private function ensureRentSchedule(int $leaseId): int
+    {
+        $lease = DB::table('leases')->where('app_id', $this->context->id())->where('id', $leaseId)->firstOrFail();
+        $cursor = CarbonImmutable::parse($lease->starts_on)->startOfMonth();
+        $end = CarbonImmutable::parse($lease->ends_on)->startOfMonth();
+        $created = 0;
+        while ($cursor <= $end) {
+            $dueDay = min((int) $lease->due_day, $cursor->daysInMonth);
+            $due = $cursor->setDay($dueDay);
+            $reference = $cursor->toDateString();
+            $exists = DB::table('lease_charges')->where('app_id', $this->context->id())->where('lease_id', $leaseId)->where('type', 'rent')->whereDate('reference_date', $reference)->exists();
+            if (! $exists) {
+                DB::table('lease_charges')->insert(['public_id' => (string) Str::uuid(), 'app_id' => $this->context->id(), 'lease_id' => $leaseId, 'type' => 'rent', 'description' => 'Aluguel '.$cursor->format('m/Y'), 'reference_date' => $reference, 'due_date' => $due->toDateString(), 'amount' => $lease->rent_amount, 'status' => 'pending', 'created_at' => now(), 'updated_at' => now()]);
+                $created++;
+            }
+            $cursor = $cursor->addMonth();
+        }
+        if ((float) $lease->deposit_amount > 0 && ! DB::table('lease_charges')->where('app_id', $this->context->id())->where('lease_id', $leaseId)->where('type', 'deposit')->exists()) {
+            DB::table('lease_charges')->insert(['public_id' => (string) Str::uuid(), 'app_id' => $this->context->id(), 'lease_id' => $leaseId, 'type' => 'deposit', 'description' => 'Caução / garantia locatícia', 'reference_date' => $lease->starts_on, 'due_date' => $lease->starts_on, 'amount' => $lease->deposit_amount, 'status' => 'pending', 'created_at' => now(), 'updated_at' => now()]);
+            $created++;
+        }
+        return $created;
     }
 
     private function buildContract(array $payload): string
