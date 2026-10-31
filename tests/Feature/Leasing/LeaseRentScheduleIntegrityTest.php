@@ -8,7 +8,6 @@ use App\Support\ApplicationContext;
 use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
-use Illuminate\Routing\Route;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -118,8 +117,14 @@ final class LeaseRentScheduleIntegrityTest extends TestCase
 
         $middleware = new SerializeLeaseChargeWrites($context);
         $request = Request::create('/api/v1/apps/locaio/leases/'.$leaseId.'/charges/schedule', 'POST');
-        $route = new Route(['POST'], '/api/v1/apps/{application}/leases/{leaseId}/charges/schedule', []);
-        $route->setParameter('leaseId', $leaseId);
+        $route = new class($leaseId) {
+            public function __construct(private readonly int $leaseId) {}
+
+            public function parameter(string $name, mixed $default = null): mixed
+            {
+                return $name === 'leaseId' ? $this->leaseId : $default;
+            }
+        };
         $request->setRouteResolver(static fn () => $route);
 
         $called = false;
@@ -144,8 +149,12 @@ final class LeaseRentScheduleIntegrityTest extends TestCase
 
         $middleware = new SerializeLeaseChargeWrites($context);
         $request = Request::create('/api/v1/apps/locaio/leases/20/charges/schedule', 'POST');
-        $route = new Route(['POST'], '/api/v1/apps/{application}/leases/{leaseId}/charges/schedule', []);
-        $route->setParameter('leaseId', 20);
+        $route = new class {
+            public function parameter(string $name, mixed $default = null): mixed
+            {
+                return $name === 'leaseId' ? 20 : $default;
+            }
+        };
         $request->setRouteResolver(static fn () => $route);
 
         $called = false;
