@@ -45,8 +45,14 @@ return new class extends Migration
         }
 
         if (! Schema::hasColumn('lease_charges', self::COLUMN)) {
-            Schema::table('lease_charges', function (Blueprint $table) use ($expression) {
-                $table->date(self::COLUMN)->nullable()->storedAs($expression);
+            $driver = DB::getDriverName();
+            Schema::table('lease_charges', function (Blueprint $table) use ($expression, $driver) {
+                $column = $table->date(self::COLUMN)->nullable();
+                if ($driver === 'sqlite') {
+                    $column->virtualAs($expression);
+                } else {
+                    $column->storedAs($expression);
+                }
             });
         }
 
