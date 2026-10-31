@@ -61,7 +61,7 @@ final class LeaseRentScheduleIntegrityTest extends TestCase
 
     public function test_migration_refuses_legacy_duplicate_rent_months_without_changing_existing_rows(): void
     {
-        $this->insertCharge(10, 20, 'rent', '2026-10-01', '2026-10-10');
+        $this->insertCharge(10, 20, 'rent', '2026-09-30', '2026-10-10');
         $this->insertCharge(10, 20, 'rent', '2026-10-15', '2026-10-31');
 
         $migration = require database_path('migrations/2026_10_31_045600_enforce_unique_lease_rent_schedule.php');

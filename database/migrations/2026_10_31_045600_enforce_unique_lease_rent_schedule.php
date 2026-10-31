@@ -86,9 +86,9 @@ return new class extends Migration
     private function rentMonthExpression(): string
     {
         return match (DB::getDriverName()) {
-            'mysql' => "CASE WHEN type = 'rent' THEN CAST(DATE_FORMAT(COALESCE(reference_date, due_date), '%Y-%m-01') AS DATE) ELSE NULL END",
-            'sqlite' => "CASE WHEN type = 'rent' THEN date(COALESCE(reference_date, due_date), 'start of month') ELSE NULL END",
-            'pgsql' => "CASE WHEN type = 'rent' THEN date_trunc('month', COALESCE(reference_date, due_date)::timestamp)::date ELSE NULL END",
+            'mysql' => "CASE WHEN type = 'rent' THEN CAST(DATE_FORMAT(due_date, '%Y-%m-01') AS DATE) ELSE NULL END",
+            'sqlite' => "CASE WHEN type = 'rent' THEN date(due_date, 'start of month') ELSE NULL END",
+            'pgsql' => "CASE WHEN type = 'rent' THEN date_trunc('month', due_date::timestamp)::date ELSE NULL END",
             default => throw new RuntimeException('Driver de banco não suportado para a chave mensal de aluguel: '.DB::getDriverName()),
         };
     }

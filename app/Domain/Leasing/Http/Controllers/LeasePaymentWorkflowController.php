@@ -104,7 +104,7 @@ final class LeasePaymentWorkflowController extends Controller
         if (! empty($lease->tenant_email) && count($charges)) {
             try {
                 Mail::raw(
-                    "Olá {$lease->tenant_name},\\n\\nO pacote contratual foi assinado e os valores iniciais definidos no acordo estão disponíveis para pagamento.\\n\\nAcesse: {$paymentUrl}",
+                    "Olá {$lease->tenant_name},\n\nO pacote contratual foi assinado e os valores iniciais definidos no acordo estão disponíveis para pagamento.\n\nAcesse: {$paymentUrl}",
                     fn ($message) => $message->to($lease->tenant_email, $lease->tenant_name)->subject('Valores iniciais da locação disponíveis')
                 );
             } catch (Throwable $e) {
