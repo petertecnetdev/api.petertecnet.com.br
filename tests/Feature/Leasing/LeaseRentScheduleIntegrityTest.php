@@ -178,7 +178,7 @@ final class LeaseRentScheduleIntegrityTest extends TestCase
             'app_id' => 10,
             'starts_on' => '2026-01-15',
             'ends_on' => '2026-03-31',
-            'due_day' => 10,
+            'due_day' => 31,
             'rent_amount' => 1500,
             'deposit_amount' => 500,
         ]);
@@ -197,7 +197,7 @@ final class LeaseRentScheduleIntegrityTest extends TestCase
             ->orderBy('reference_date')
             ->get();
 
-        self::assertSame(['2026-01-15', '2026-02-10', '2026-03-10'], $rentCharges->pluck('due_date')->all());
+        self::assertSame(['2026-01-15', '2026-02-28', '2026-03-31'], $rentCharges->pluck('due_date')->all());
         self::assertSame(['2026-01-01', '2026-02-01', '2026-03-01'], $rentCharges->pluck('rent_schedule_month')->all());
         self::assertSame(0, $service->ensureForLease($leaseId));
         self::assertSame(4, DB::table('lease_charges')->count());
