@@ -21,7 +21,7 @@ final class SerializeLeaseChargeWrites
         abort_unless($leaseId !== false, 404);
 
         return DB::transaction(function () use ($request, $next, $leaseId): Response {
-            DB::table('leases')
+            $lease = DB::table('leases')
                 ->where('app_id', $this->context->id())
                 ->where('id', $leaseId)
                 ->whereNull('deleted_at')
